@@ -1,0 +1,85 @@
+{
+  "common": {
+    "appName": "CPC Numune",
+    "appTagline": "Numune Yönetimi",
+    "searchPlaceholder": "Şirket, ürün veya standart ara...",
+    "notifications": "Bildirimler",
+    "roleAdmin": "Yönetici",
+    "roleLab": "Laboratuvar",
+    "confirm": "Onayla",
+    "cancel": "Vazgeç",
+    "save": "Kaydet"
+  },
+  "dashboard": {
+    "title": "Gösterge Paneli",
+    "dueConcrete": "Bu Ay Beton",
+    "dueCement": "Bu Ay Çimento",
+    "activeTrips": "Aktif Seyahatler",
+    "labLoad": "Lab İş Yükü",
+    "topPrioritized": "Öncelikli Firma-Ürünler",
+    "quickActions": "Hızlı İşlemler"
+  },
+  "due": {
+    "title": "Bu Ay Vadesi Gelenler",
+    "filters": {
+      "productType": "Ürün Tipi",
+      "city": "Şehir",
+      "standard": "Standart",
+      "customer": "Müşteri Kodu",
+      "priority": "Öncelik"
+    },
+    "actions": {
+      "filter": "Filtrele",
+      "reset": "Sıfırla",
+      "email": "E-posta Gönder",
+      "createTrip": "Seyahat Oluştur"
+    }
+  },
+  "trips": {
+    "listTitle": "Seyahatler",
+    "newTrip": "Yeni Seyahat",
+    "statusFilter": "Durum",
+    "assigneeFilter": "Saha Personeli",
+    "dateFrom": "Başlangıç Tarihi",
+    "dateTo": "Bitiş Tarihi",
+    "detailActions": {
+      "complete": "Tamamla",
+      "activate": "Aktif Et",
+      "sampleTaken": "Numune Alındı",
+      "sendToLab": "Laba Gönder"
+    }
+  },
+  "samples": {
+    "title": "Numuneler",
+    "empty": "Henüz numune kaydı yok",
+    "subtitle": "Numune alınmış seyahatleri yönet, laboratuvara gönder"
+  },
+  "laboratory": {
+    "title": "Laboratuvar Gelen Kutusu",
+    "accept": "Kabul Et",
+    "openForm": "Formu Aç",
+    "saveDraft": "Taslak Kaydet",
+    "submit": "Onaya Gönder",
+    "approve": "Onayla"
+  },
+  "companyProducts": {
+    "title": "Firma-Ürünler",
+    "new": "Yeni Kayıt",
+    "certificateNo": "Sertifika Numarası",
+    "certificateDate": "Sertifika Tarihi",
+    "archive": "Arşivle",
+    "restore": "Aktifleştir"
+  },
+  "reports": {
+    "title": "Raporlar",
+    "byCity": "Şehre Göre Firma-Ürün Dağılımı",
+    "byPriority": "Ürün Tipine Göre Öncelik",
+    "labTurnaround": "Laboratuvar Onay Süresi"
+  },
+  "settings": {
+    "title": "Kontrol",
+    "users": "Ekip",
+    "sampling": "Numune Döngüleri",
+    "emailTemplates": "E-posta Şablonları"
+  }
+}
