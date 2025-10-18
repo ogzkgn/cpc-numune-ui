@@ -53,13 +53,8 @@ const LabInboxView = () => {
       cell: (row) => (isLabUser ? row.product.name : `${row.company.name} / ${row.product.name}`)
     },
     {
-      id: "productCode",
-      header: "Ürün Kodu",
-      cell: (row) => row.companyProduct.productCode ?? "-"
-    },
-    {
       id: "labEntry",
-      header: "Takip No",
+      header: "Takip Kodu",
       cell: (row) => row.item.labEntryCode ?? "-"
     },
     {

@@ -138,11 +138,6 @@ const TripSamplesPanel = () => {
       cell: (row) => row.productName
     },
     {
-      id: "productCode",
-      header: "Ürün Kodu",
-      cell: (row) => row.productCode ?? "-"
-    },
-    {
       id: "location",
       header: "İl / İlçe",
       cell: (row) => row.location
@@ -154,7 +149,7 @@ const TripSamplesPanel = () => {
     },
     {
       id: "date",
-      header: "Son Numune Tarihi",
+      header: "Numune Alınma Tarihi",
       cell: (row) => formatDate(row.performedAt)
     },
     {

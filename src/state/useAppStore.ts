@@ -26,6 +26,7 @@ import type {
   ToastMessage,
   Trip,
   TripCompletion,
+  TripCompletionEntry,
   TripDutyType,
   TripItem,
   TripItemLabStatus,
@@ -39,6 +40,12 @@ type SampleTakenInput = {
   sampledAt: string;
 };
 
+type PlannerDutyConfig = {
+  companyProductId: number;
+  dutyType: TripDutyType;
+  dutyAssigneeIds: number[];
+};
+
 type CreateTripInput = {
   name?: string;
   plannedAt?: string;
@@ -46,6 +53,7 @@ type CreateTripInput = {
   companyProductIds: number[];
   assigneeIds: number[];
   status?: TripStatus;
+  duties?: PlannerDutyConfig[];
 };
 
 type UpdateCompanyProductInput = Partial<Omit<CompanyProduct, "id">> & {
@@ -178,9 +186,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     })),
 
-  createTrip: ({ name, plannedAt, notes, companyProductIds, assigneeIds, status = "ACTIVE" }) => {
+  createTrip: ({ name, plannedAt, notes, companyProductIds, assigneeIds, duties, status = "ACTIVE" }) => {
     const nextId = generateId();
     const now = new Date().toISOString();
+
+    const dutyAssignments: Trip["dutyAssignments"] = {};
+    const dutyMap = new Map<number, PlannerDutyConfig>();
+    duties?.forEach((entry) => {
+      dutyMap.set(entry.companyProductId, entry);
+    });
+
+    companyProductIds.forEach((companyProductId) => {
+      const config = dutyMap.get(companyProductId);
+      dutyAssignments[companyProductId] = {
+        dutyType: config?.dutyType ?? "NUMUNE",
+        dutyAssigneeIds:
+          config?.dutyAssigneeIds && config.dutyAssigneeIds.length > 0
+            ? [...config.dutyAssigneeIds]
+            : [...assigneeIds]
+      };
+    });
 
     const newTrip: Trip = {
       id: nextId,
@@ -188,7 +213,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       plannedAt: plannedAt ?? now,
       status,
       assigneeIds,
-      notes
+      notes,
+      dutyAssignments
     };
 
     const newTripItems: TripItem[] = companyProductIds.map((companyProductId) => ({
@@ -196,7 +222,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       tripId: nextId,
       companyProductId,
       sampled: false,
-      labStatus: "PENDING"
+      labStatus: "PENDING",
+      dutyType: dutyAssignments[companyProductId]?.dutyType ?? "NUMUNE",
+      dutyAssigneeIds: dutyAssignments[companyProductId]?.dutyAssigneeIds ?? [...assigneeIds]
     }));
 
     set((state) => {
@@ -395,15 +423,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => {
       const timestamp = new Date().toISOString();
       const baseTripItems = state.tripItems;
+      const trip = state.trips.find((entry) => entry.id === input.tripId);
 
       const trackingCodeUpdates = new Map<number, string>();
 
       const normalizedEntries: TripCompletionEntry[] = input.entries.map((entry) => {
         const tripItem = baseTripItems.find((item) => item.id === entry.tripItemId);
+        const dutyAssignment =
+          tripItem && trip?.dutyAssignments ? trip.dutyAssignments[tripItem.companyProductId] : undefined;
         const companyProduct = tripItem
           ? state.companyProducts.find((product) => product.id === tripItem.companyProductId)
           : undefined;
-        const dutyType: TripDutyType = entry.dutyType ?? tripItem?.dutyType ?? "NUMUNE";
+        const dutyType: TripDutyType =
+          entry.dutyType ?? tripItem?.dutyType ?? dutyAssignment?.dutyType ?? "NUMUNE";
+        const dutyAssigneeIds =
+          entry.dutyAssigneeIds && entry.dutyAssigneeIds.length > 0
+            ? entry.dutyAssigneeIds
+            : tripItem?.dutyAssigneeIds?.length
+              ? tripItem.dutyAssigneeIds
+              : dutyAssignment?.dutyAssigneeIds ?? [];
         const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
 
         let trackingCode = entry.trackingCode;
@@ -426,6 +464,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         return {
           ...entry,
+          dutyType,
+          dutyAssigneeIds,
           trackingCode,
           performedAt: entry.sampleNotCompleted ? undefined : entry.performedAt,
           inspectedAt: entry.inspectionNotCompleted ? undefined : entry.inspectedAt,

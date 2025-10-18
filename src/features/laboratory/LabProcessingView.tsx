@@ -111,11 +111,6 @@ const LabProcessingView = () => {
       cell: (row) => (isLabUser ? row.productName : `${row.companyName} / ${row.productName}`)
     },
     {
-      id: "productCode",
-      header: "Ürün Kodu",
-      cell: (row) => row.productCode ?? "-"
-    },
-    {
       id: "labEntry",
       header: "Takip Kodu",
       cell: (row) => row.labEntryCode ?? "-"
@@ -228,10 +223,10 @@ const LabProcessingView = () => {
   const drawerFooter = allowEdit ? (
     <div className="flex justify-end gap-2">
       <Button variant="ghost" onClick={() => setSelectedItem(null)}>
-        VazgeÃ§
+        Vazgeç
       </Button>
       <Button onClick={handleSubmit} disabled={!canSubmit}>
-        GÃ¶nder
+        Gönder
       </Button>
     </div>
   ) : (
@@ -286,7 +281,7 @@ const LabProcessingView = () => {
             {shipmentDetails ? (
               <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Saha GÃ¶nderim Bilgileri
+                  Saha Gönderim Bilgileri
                 </h3>
                 <div className="grid gap-3 md:grid-cols-2">
                   {SHIPMENT_FIELDS.map((field) => {

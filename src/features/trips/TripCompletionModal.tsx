@@ -62,7 +62,7 @@ const lodgingOptions: { value: LodgingProvider; label: string }[] = [
 
 const dutyTypeLabels: Record<TripDutyType, string> = {
   NUMUNE: "Numune",
-  "GÖZETİM": "Gözetim",
+  "GÖZETİM":"Gözetim",
   BOTH: "Gözetim + Numune"
 };
 
@@ -107,7 +107,9 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
 
     const entries: EntryFormState[] = relatedTripItems.map((item) => {
       const existingEntry = existingCompletion?.entries.find((entry) => entry.tripItemId === item.id);
-      const dutyType: TripDutyType = item?.dutyType ?? existingEntry?.dutyType ?? "NUMUNE";
+      const dutyAssignment = trip?.dutyAssignments?.[item.companyProductId];
+      const dutyType: TripDutyType =
+        item?.dutyType ?? existingEntry?.dutyType ?? dutyAssignment?.dutyType ?? "NUMUNE";
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
       const requiresInspection = dutyType === "GÖZETİM" || dutyType === "BOTH";
 
@@ -171,7 +173,8 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         entry.tripItemId === tripItemId
           ? {
               ...entry,
-              [field]: value
+              [field]: value,
+              ...(field === "performedAt" && !value ? { trackingCode: undefined } : {})
             }
           : entry
       )
@@ -191,7 +194,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
           ? {
               ...entry,
               [field]: value,
-              ...(field === "sampleNotCompleted" && value ? { performedAt: "" } : {}),
+              ...(field === "sampleNotCompleted" && value ? { performedAt: "", trackingCode: undefined } : {}),
               ...(field === "inspectionNotCompleted" && value ? { inspectionDate: "" } : {})
             }
           : entry
@@ -227,31 +230,40 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
   const handleSubmit = () => {
     if (!trip) return;
     if (!isFormValid()) {
-      setError("Lütfen zorunlu alanları doldurun.");
+      setError("L?tfen zorunlu alanlar? doldurun.");
       return;
     }
 
     const payloadEntries: TripCompletionEntry[] = formState.entries.map((entry) => {
       const tripItem = tripItemById.get(entry.tripItemId);
-      const dutyType: TripDutyType = tripItem?.dutyType ?? "NUMUNE";
+      const dutyAssignment = tripItem ? trip?.dutyAssignments?.[tripItem.companyProductId] : undefined;
+      const dutyType: TripDutyType =
+        tripItem?.dutyType ?? dutyAssignment?.dutyType ?? "NUMUNE";
       const dutyAssigneeIds =
-        tripItem?.dutyAssigneeIds && tripItem.dutyAssigneeIds.length > 0
+        (tripItem?.dutyAssigneeIds && tripItem.dutyAssigneeIds.length > 0
           ? tripItem.dutyAssigneeIds
-          : trip?.assigneeIds ?? [];
+          : dutyAssignment?.dutyAssigneeIds) ??
+        trip?.assigneeIds ??
+        [];
 
       const companyProduct = tripItem
         ? companyProducts.find((product) => product.id === tripItem.companyProductId)
         : undefined;
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
-      const trackingCode =
-        requiresSample && !entry.sampleNotCompleted && entry.performedAt
-          ? generateLabEntryCode({
-              productCode: companyProduct?.productCode,
-              performedAt: entry.performedAt,
-              tripItems,
-              excludeTripItemId: entry.tripItemId
-            })
-          : undefined;
+      let trackingCode = entry.trackingCode;
+      if (requiresSample && !entry.sampleNotCompleted && entry.performedAt) {
+        trackingCode =
+          trackingCode ??
+          generateLabEntryCode({
+            productCode: companyProduct?.productCode,
+            performedAt: entry.performedAt,
+            tripItems,
+            excludeTripItemId: entry.tripItemId
+          }) ??
+          undefined;
+      } else {
+        trackingCode = undefined;
+      }
 
       return {
         tripItemId: entry.tripItemId,
@@ -293,16 +305,32 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
       const company = cp ? companyMap.get(cp.companyId) : undefined;
       const product = cp ? productMap.get(cp.productId) : undefined;
       const site = cp?.siteId ? siteMap.get(cp.siteId) : undefined;
-      const dutyType: TripDutyType = tripItem?.dutyType ?? "NUMUNE";
+      const dutyAssignment = tripItem ? trip?.dutyAssignments?.[tripItem.companyProductId] : undefined;
+      const completionEntry = existingCompletion?.entries.find((item) => item.tripItemId === entry.tripItemId);
+      const dutyType: TripDutyType =
+        tripItem?.dutyType ?? completionEntry?.dutyType ?? dutyAssignment?.dutyType ?? "NUMUNE";
       const dutyAssigneeIds =
-        tripItem?.dutyAssigneeIds && tripItem.dutyAssigneeIds.length > 0
+        (tripItem?.dutyAssigneeIds && tripItem.dutyAssigneeIds.length > 0
           ? tripItem.dutyAssigneeIds
-          : existingCompletion?.entries.find((item) => item.tripItemId === entry.tripItemId)?.dutyAssigneeIds ?? [];
+          : completionEntry?.dutyAssigneeIds) ??
+        dutyAssignment?.dutyAssigneeIds ??
+        trip?.assigneeIds ??
+        [];
       const dutyAssignees = dutyAssigneeIds
         .map((id) => employeeMap.get(id))
         .filter((value): value is typeof employees[number] => Boolean(value));
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
       const requiresInspection = dutyType === "GÖZETİM" || dutyType === "BOTH";
+      const trackingCode =
+        entry.trackingCode ??
+        (requiresSample && entry.performedAt && !entry.sampleNotCompleted
+          ? generateLabEntryCode({
+              productCode: cp?.productCode,
+              performedAt: entry.performedAt,
+              tripItems,
+              excludeTripItemId: entry.tripItemId
+            }) ?? undefined
+          : undefined);
 
       return {
         entry,
@@ -315,7 +343,8 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         dutyAssigneeIds,
         dutyAssignees,
         requiresSample,
-        requiresInspection
+        requiresInspection,
+        trackingCode
       };
     });
   }, [
@@ -325,6 +354,8 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     companyMap,
     productMap,
     siteMap,
+    trip,
+    tripItems,
     existingCompletion,
     employeeMap
   ]);
@@ -488,7 +519,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
           </section>
 
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">Firma / Ürün Bilgileri</h3>
+            <h3 className="text-sm font-semibold text-slate-700">Firma / ?r?n Bilgileri</h3>
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="min-w-full divide-y divide-slate-200 text-xs md:text-sm">
                 <thead className="bg-slate-50">
@@ -498,16 +529,17 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                     <th className="px-3 py-2">Kapsam</th>
                     <th className="px-3 py-2">Görev Bilgisi</th>
                     <th className="px-3 py-2">Numune Tarihi</th>
+                    <th className="px-3 py-2">Takip No</th>
                     <th className="px-3 py-2">Gözetim Tarihi</th>
                     <th className="px-3 py-2">Konaklama Ödeme</th>
-                    <th className="px-3 py-2">Ulaşım Masrafı</th>
-                    <th className="px-3 py-2">Öğlen</th>
-                    <th className="px-3 py-2">Akşam</th>
+                    <th className="px-3 py-2">Ulasim Masrafı</th>
+                    <th className="px-3 py-2">Öğle Yemeği</th>
+                    <th className="px-3 py-2">Akşam Yemeği</th>
                     <th className="px-3 py-2">Firma Masrafı</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {entryViews.map(({ entry, company, product, site, dutyType, dutyAssignees, requiresSample, requiresInspection }) => (
+                  {entryViews.map(({ entry, company, product, site, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
                     <tr key={entry.tripItemId} className="align-top">
                       <td className="px-3 py-2 text-slate-700">
                         {company?.name ?? "-"}
@@ -560,6 +592,20 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                         )}
                       </td>
                       <td className="px-3 py-2">
+                        {requiresSample ? (
+                          entry.sampleNotCompleted ? (
+                            <span className="text-xs text-red-600">Tamamlanmadı</span>
+                          ) : trackingCode ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              {trackingCode}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">Tarih girildiğinde oluşacak</span>
+                          )
+                        ) : (
+                          <span className="text-xs text-slate-400">Gözetim görevi</span>
+                        )}
+                      </td><td className="px-3 py-2">
                         {requiresInspection ? (
                           <div className="space-y-2">
                             <input
@@ -600,7 +646,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "lodgingPaymentAmount", event.target.value)
                           }
-                          placeholder="₺"
+                          placeholder="?"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -612,7 +658,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "transportExpense", event.target.value)
                           }
-                          placeholder="₺"
+                          placeholder="?"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -624,7 +670,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "mealLunchExpense", event.target.value)
                           }
-                          placeholder="₺"
+                          placeholder="?"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -636,7 +682,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "mealDinnerExpense", event.target.value)
                           }
-                          placeholder="₺"
+                          placeholder="?"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -648,7 +694,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "companyExpense", event.target.value)
                           }
-                          placeholder="₺"
+                          placeholder="?"
                         />
                       </td>
                     </tr>
@@ -673,6 +719,22 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
 };
 
 export default TripCompletionModal;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

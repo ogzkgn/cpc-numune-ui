@@ -234,7 +234,7 @@ const TripDetailView = () => {
         </div>
       </div>
 
-      <Table columns={columns} data={items} keyExtractor={(row) => row.item.id} emptyState="Bu seyahat iÃ§in numune kaydÄ± yok" />
+      <Table columns={columns} data={items} keyExtractor={(row) => row.item.id} emptyState="Bu seyahat için numune kaydı yok" />
 
       <Modal
         open={sampleModalOpen}
@@ -244,14 +244,14 @@ const TripDetailView = () => {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setSampleModalOpen(false)}>
-              VazgeÃ§
+              Vazgeç
             </Button>
             <Button onClick={confirmSample}>Kaydet</Button>
           </div>
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">{selectedItemIds.size} numune iÃ§in numune alÄ±nma tarihini belirleyin.</p>
+          <p className="text-sm text-slate-600">{selectedItemIds.size} numune için numune alınma tarihini belirleyin.</p>
           <input
             type="date"
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
