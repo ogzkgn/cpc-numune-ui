@@ -16,6 +16,7 @@ import type { LabFormDocument, TripItem } from "../../types";
 type PendingEntry = {
   item: TripItem;
   companyName: string;
+  companyBtCode?: string;
   productName: string;
   productStandard: string | undefined;
   productCode: string | undefined;
@@ -117,6 +118,7 @@ const LabProcessingView = () => {
       accumulator.push({
         item,
         companyName: company.name,
+        companyBtCode: company.customerCode,
         productName: product.name,
         productStandard: product.standardNo ?? undefined,
         productCode: companyProduct.productCode,
@@ -161,6 +163,11 @@ const LabProcessingView = () => {
   }, [selectedItem]);
 
   const columns: TableColumn<PendingEntry>[] = [
+    {
+      id: "btCode",
+      header: "BT Kod",
+      cell: (row) => row.companyBtCode ?? "-"
+    },
     {
       id: "product",
       header: isLabUser ? "Ürün" : "Firma / Ürün",

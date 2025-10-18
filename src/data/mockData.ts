@@ -28,8 +28,8 @@ export const sites: Site[] = [
 ];
 
 export const products: Product[] = [
-  { id: 1, name: "BT 4830 Beton", groupName: "Beton", productType: "concrete", standardNo: "TS EN 13515" },
-  { id: 2, name: "BT 12345 Beton", groupName: "Beton", productType: "concrete", standardNo: "TS EN 13515" },
+  { id: 1, name: "Beton", groupName: "Beton", productType: "concrete", standardNo: "TS EN 13515" },
+  { id: 2, name: "Beton", groupName: "Beton", productType: "concrete", standardNo: "TS EN 13515" },
   { id: 3, name: "CEM II/A-M (P-LL) 42,5 N", groupName: "Çimento", productType: "cement", standardNo: "TS EN 197-1" },
   { id: 4, name: "CEM II/B-M (P-LL) 32,5 R", groupName: "Çimento", productType: "cement", standardNo: "TS EN 197-1" },
   { id: 5, name: "CEM II/B-S 42,5N ", groupName: "Cüruf", productType: "slag", standardNo: "TS EN 15167" },

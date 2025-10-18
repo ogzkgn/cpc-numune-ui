@@ -16,6 +16,7 @@ type SampleRow = {
   tripId: number;
   tripItem: TripItem;
   companyName: string;
+  companyBtCode?: string;
   productName: string;
   productCode?: string;
   location: string;
@@ -94,6 +95,7 @@ const TripSamplesPanel = () => {
           tripId: trip.id,
           tripItem,
           companyName: company?.name ?? "-",
+          companyBtCode: company?.customerCode,
           productName: product
             ? `${product.name}${product.standardNo ? ` (${product.standardNo})` : ""}`
             : "-",
@@ -131,6 +133,11 @@ const TripSamplesPanel = () => {
       id: "company",
       header: "Firma",
       cell: (row) => row.companyName
+    },
+    {
+      id: "btCode",
+      header: "BT Kod",
+      cell: (row) => row.companyBtCode ?? "-"
     },
     {
       id: "product",

@@ -85,11 +85,15 @@ const CompanyProductList = () => {
   );
 
   const columns: TableColumn<CompanyProduct>[] = [
-    
     {
       id: "productCode",
       header: "Ürün Kodu",
       cell: (row) => row.productCode ?? "-"
+    },
+    {
+      id: "btCode",
+      header: "BT Kod",
+      cell: (row) => companyMap.get(row.companyId)?.customerCode ?? "-"
     },
     {
       id: "company",

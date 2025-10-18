@@ -161,6 +161,11 @@ const DueThisMonthView = () => {
       cell: (item) => item.company.name
     },
     {
+      id: "btCode",
+      header: "BT Kod",
+      cell: (item) => item.company.customerCode ?? "-"
+    },
+    {
       id: "city",
       header: "Şehir",
       cell: (item) => item.site?.city ?? "-"

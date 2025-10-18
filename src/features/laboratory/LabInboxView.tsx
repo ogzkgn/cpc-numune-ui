@@ -63,6 +63,11 @@ const LabInboxView = () => {
 
   const columns: TableColumn<(typeof inboxItems)[number]>[] = [
     {
+      id: "btCode",
+      header: "BT Kod",
+      cell: (row) => row.company?.customerCode ?? "-"
+    },
+    {
       id: "company",
       header: isLabUser ? "Ürün" : "Firma / Ürün",
       cell: (row) => (isLabUser ? row.product.name : `${row.company.name} / ${row.product.name}`)
