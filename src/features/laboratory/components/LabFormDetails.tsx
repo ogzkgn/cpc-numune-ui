@@ -151,7 +151,7 @@ const LabFormDetails = ({
               </div>
             ))
           ) : (
-            <p className="text-sm text-slate-500">Henüz doküman eklenmedi.</p>
+            <p className="text-sm text-slate-500">Doküman eklenmedi.</p>
           )}
         </div>
       </div>

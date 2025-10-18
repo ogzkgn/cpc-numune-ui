@@ -11,13 +11,14 @@ import { labStatusLabels, labStatusTokens } from "../../utils/labels";
 import { SHIPMENT_FIELDS, getFieldConfig } from "./labConstants";
 import LabFormDetails from "./components/LabFormDetails";
 import type { TableColumn } from "../../components/ui/Table";
-import type { LabFormDocument, TripItem } from "../../types";
+import type { LabFormDocument, ProductType, TripItem } from "../../types";
 
 type PendingEntry = {
   item: TripItem;
   companyName: string;
   companyBtCode?: string;
   productName: string;
+  productType: ProductType | undefined;
   productStandard: string | undefined;
   productCode: string | undefined;
   labId: number | undefined;
@@ -120,6 +121,7 @@ const LabProcessingView = () => {
         companyName: company.name,
         companyBtCode: company.customerCode,
         productName: product.name,
+        productType: product.productType,
         productStandard: product.standardNo ?? undefined,
         productCode: companyProduct.productCode,
         labId: item.labAssignedLabId,
@@ -148,7 +150,10 @@ const LabProcessingView = () => {
       return;
     }
 
-    const fieldConfig = getFieldConfig(selectedItem.productStandard);
+    const fieldConfig = getFieldConfig({
+      productType: selectedItem.productType,
+      standardNo: selectedItem.productStandard
+    });
     const existingData = selectedItem.labFormData ?? {};
     const nextValues: Record<string, string> = {};
 
@@ -224,7 +229,10 @@ const LabProcessingView = () => {
     }
   ];
 
-  const fieldConfig = getFieldConfig(selectedItem?.productStandard);
+  const fieldConfig = getFieldConfig({
+    productType: selectedItem?.productType,
+    standardNo: selectedItem?.productStandard
+  });
 
   const canSubmit =
     allowEdit &&

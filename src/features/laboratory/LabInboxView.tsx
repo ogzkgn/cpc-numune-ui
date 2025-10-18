@@ -135,7 +135,10 @@ const LabInboxView = () => {
     setRevisionNote(selectedForm?.cpcNotes ?? "");
   }, [selectedForm]);
 
-  const displayFields = getFieldConfig(currentProduct?.standardNo);
+  const displayFields = getFieldConfig({
+    productType: currentProduct?.productType,
+    standardNo: currentProduct?.standardNo
+  });
 
   const shipmentDetails = selectedItem?.labShipmentDetails ?? null;
   const isAccepted = selectedItem?.labStatus === "ACCEPTED" || selectedItem?.labStatus === "APPROVED";
