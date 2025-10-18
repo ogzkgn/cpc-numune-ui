@@ -1,8 +1,8 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import Modal from "../../components/ui/Modal";
+import { useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
-import Drawer from "../../components/ui/Drawer";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
@@ -246,7 +246,7 @@ const LabInboxView = () => {
     handleRequestRevision(trimmed);
   };
 
-  const drawerFooter = !selectedItem
+  const modalFooter = !selectedItem
     ? undefined
     : selectedItem.labStatus === "WAITING_CONFIRM" && isAdminUser
       ? (
@@ -281,7 +281,7 @@ const LabInboxView = () => {
         emptyState="Laboratuvarda bekleyen numune yok"
       />
 
-      <Drawer
+      <Modal
         open={Boolean(selectedItem)}
         onClose={() => setSelectedItem(null)}
         title="Laboratuvar Formu"
@@ -290,11 +290,11 @@ const LabInboxView = () => {
             ? `${currentProduct.name} / ${currentProduct.standardNo ?? "Standart belirtilmedi"}`
             : undefined
         }
-        width="lg"
-        footer={drawerFooter}
+        size="xl" className="max-h-[90vh]"
+        footer={modalFooter}
       >
         {selectedItem ? (
-          <div className="space-y-4 text-sm text-slate-700">
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1 text-sm text-slate-700">
             <div className="grid gap-3 md:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-slate-500">Takip No</span>
@@ -357,9 +357,11 @@ const LabInboxView = () => {
         ) : (
           <p className="text-sm text-slate-500">Form verisi bulunamadı.</p>
         )}
-      </Drawer>
+      </Modal>
     </div>
   );
 };
 
 export default LabInboxView;
+
+

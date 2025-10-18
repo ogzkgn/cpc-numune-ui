@@ -2,7 +2,7 @@
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import Drawer from "../../components/ui/Drawer";
+import Modal from "../../components/ui/Modal";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
@@ -37,7 +37,7 @@ const LabProcessingView = () => {
   const activeRole = useAppStore((state) => state.activeRole);
   const addToast = useAppStore((state) => state.addToast);
   const upsertLabForm = useAppStore((state) => state.upsertLabForm);
-  const { companyMap, productMap, companyProductMap } = useEntityMaps();
+  const {companyMap, productMap, companyProductMap } = useEntityMaps();
   const labs = useAppStore((state) => state.labs);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
 
@@ -281,7 +281,7 @@ const LabProcessingView = () => {
     return String(value);
   };
 
-  const drawerDescription = selectedItem
+  const modalDescription = selectedItem
     ? isLabUser
       ? selectedItem.productStandard
         ? `${selectedItem.productName} (${selectedItem.productStandard})`
@@ -289,7 +289,7 @@ const LabProcessingView = () => {
       : `${selectedItem.companyName} / ${selectedItem.productName}${selectedItem.productStandard ? ` (${selectedItem.productStandard})` : ""}`
     : undefined;
 
-  const drawerFooter = allowEdit ? (
+  const modalFooter = allowEdit ? (
     <div className="flex justify-end gap-2">
       <Button variant="ghost" onClick={() => setSelectedItem(null)}>
         Vazgeç
@@ -320,16 +320,17 @@ const LabProcessingView = () => {
         emptyState="Bekleyen numune bulunmuyor"
       />
 
-      <Drawer
+      <Modal
         open={Boolean(selectedItem)}
         onClose={() => setSelectedItem(null)}
         title="Numune Formu"
-        description={drawerDescription}
-        width="lg"
-        footer={selectedItem ? drawerFooter : undefined}
+        description={modalDescription}
+        size="xl"
+        className="max-h-[90vh]"
+        footer={selectedItem ? modalFooter : undefined}
       >
         {selectedItem ? (
-          <div className="space-y-5 text-sm text-slate-700">
+          <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1 text-sm text-slate-700">
             <div className="grid gap-3 md:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-slate-500">Lab Giriş No</span>
@@ -396,10 +397,16 @@ const LabProcessingView = () => {
             />
           </div>
         ) : null}
-      </Drawer>
+      </Modal>
     </div>
   );
 };
 
 export default LabProcessingView;
+
+
+
+
+
+
 
