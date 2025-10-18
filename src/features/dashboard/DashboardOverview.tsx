@@ -1,6 +1,5 @@
 ﻿import { useMemo } from "react";
 
-
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Table from "../../components/ui/Table";
@@ -42,7 +41,12 @@ const DashboardOverview = () => {
     const activeTrips = trips.filter((trip) => trip.status === "ACTIVE").length;
 
     const samplesInLab = {
-      pending: tripItems.filter((item) => item.labStatus === "PENDING" || item.labStatus === "ACCEPTED").length,
+      pending: tripItems.filter(
+        (item) =>
+          item.labStatus === "PENDING" ||
+          item.labStatus === "ACCEPTED" ||
+          item.labStatus === "WAITING_CONFIRM"
+      ).length,
       draft: tripItems.filter((item) => item.labStatus === "DRAFT").length,
       submitted: tripItems.filter((item) => item.labStatus === "SUBMITTED").length
     };
@@ -97,7 +101,7 @@ const DashboardOverview = () => {
             <span className="text-xs text-slate-500">{product}</span>
           </div>
         );
-      },
+      }
     },
     {
       id: "location",

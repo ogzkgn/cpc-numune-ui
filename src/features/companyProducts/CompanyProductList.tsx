@@ -30,7 +30,6 @@ const CompanyProductList = () => {
     siteId: string;
     productId: string;
     productCode: string;
-    labName: string;
     certificateNo: string;
     certificateDate: string;
     lastSampleDate: string;
@@ -41,7 +40,6 @@ const CompanyProductList = () => {
     siteId: "",
     productId: "",
     productCode: "",
-    labName: "",
     certificateNo: "",
     certificateDate: "",
     lastSampleDate: ""
@@ -64,7 +62,6 @@ const CompanyProductList = () => {
       const matchesProduct = product?.name.toLowerCase().includes(query) ?? false;
       const matchesProductCode = cp.productCode?.toLowerCase().includes(query) ?? false;
       const matchesStandard = product?.standardNo?.toLowerCase().includes(query) ?? false;
-      const matchesLab = cp.labName?.toLowerCase().includes(query) ?? false;
       const matchesCertificate = cp.certificateNo?.toLowerCase().includes(query) ?? false;
       const matchesCity = site?.city?.toLowerCase().includes(query) ?? false;
       const matchesDistrict = site?.district?.toLowerCase().includes(query) ?? false;
@@ -74,7 +71,6 @@ const CompanyProductList = () => {
         matchesProduct ||
         matchesProductCode ||
         matchesStandard ||
-        matchesLab ||
         matchesCertificate ||
         matchesCity ||
         matchesDistrict
@@ -108,11 +104,6 @@ const CompanyProductList = () => {
         if (!site) return "-";
         return site.district ? `${site.city} / ${site.district}` : site.city;
       }
-    },
-    {
-      id: "labName",
-      header: "Laboratuvar",
-      cell: (row) => row.labName ?? "-"
     },
     {
       id: "lastSample",
@@ -188,7 +179,6 @@ const CompanyProductList = () => {
       siteId: cp.siteId ? String(cp.siteId) : "",
       productId: cp.productId ? String(cp.productId) : "",
       productCode: cp.productCode ?? "",
-      labName: cp.labName ?? "",
       certificateNo: cp.certificateNo ?? "",
       certificateDate: cp.certificateDate ? cp.certificateDate.slice(0, 10) : "",
       lastSampleDate: cp.lastSampleDate ? cp.lastSampleDate.slice(0, 10) : ""
@@ -230,7 +220,6 @@ const CompanyProductList = () => {
       productId,
       siteId,
       productCode: editorState.productCode || undefined,
-      labName: editorState.labName || undefined,
       certificateNo: editorState.certificateNo || undefined,
       certificateDate: editorState.certificateDate || undefined,
       lastSampleDate: editorState.lastSampleDate || undefined
@@ -348,15 +337,6 @@ const CompanyProductList = () => {
                 value={editorState.productCode}
                 onChange={(event) => updateEditorField("productCode", event.target.value)}
                 placeholder="Örn. CPC-2230.Ç4"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-              Laboratuvar İsmi
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={editorState.labName}
-                onChange={(event) => updateEditorField("labName", event.target.value)}
-                placeholder="Örn. Bursa Çimento Lab."
               />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">

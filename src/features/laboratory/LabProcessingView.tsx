@@ -9,8 +9,9 @@ import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { labStatusLabels, labStatusTokens } from "../../utils/labels";
 import { SHIPMENT_FIELDS, getFieldConfig } from "./labConstants";
+import LabFormDetails from "./components/LabFormDetails";
 import type { TableColumn } from "../../components/ui/Table";
-import type { TripItem } from "../../types";
+import type { LabFormDocument, TripItem } from "../../types";
 
 type PendingEntry = {
   item: TripItem;
@@ -22,6 +23,9 @@ type PendingEntry = {
   labEntryCode: string | undefined;
   labSentAt: string | undefined;
   labFormData: Record<string, unknown> | undefined;
+  labNotes: string | undefined;
+  cpcNotes: string | undefined;
+  documents: LabFormDocument[] | undefined;
   companyProductId: number;
 };
 
@@ -31,60 +35,114 @@ const LabProcessingView = () => {
   const activeRole = useAppStore((state) => state.activeRole);
   const addToast = useAppStore((state) => state.addToast);
   const upsertLabForm = useAppStore((state) => state.upsertLabForm);
-  const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
   const { companyMap, productMap, companyProductMap } = useEntityMaps();
   const labs = useAppStore((state) => state.labs);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
 
   const [selectedItem, setSelectedItem] = useState<PendingEntry | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [notes, setNotes] = useState("");
+  const [labNotes, setLabNotes] = useState("");
+  const [documents, setDocuments] = useState<LabFormDocument[]>([]);
 
   const isLabUser = activeRole === "lab";
   const allowEdit = isLabUser;
   const buttonLabel = isLabUser ? "Formu Doldur" : "İncele";
+  const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024;
+
+  const createDocumentId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result ?? "") as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const handleDocumentAdd = async (files: File[]) => {
+    if (!files.length) return;
+    const oversize = files.find((file) => file.size > MAX_DOCUMENT_SIZE);
+    if (oversize) {
+      addToast({
+        title: "Dosya çok büyük",
+        description: `${oversize.name} dosyası 5 MB sınırını aşıyor.`,
+        variant: "error"
+      });
+      return;
+    }
+
+    try {
+      const newDocuments = await Promise.all(
+        files.map(async (file) => ({
+          id: createDocumentId(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          uploadedAt: new Date().toISOString(),
+          dataUrl: await readFileAsDataUrl(file)
+        }))
+      );
+      setDocuments((prev) => [...prev, ...newDocuments]);
+    } catch {
+      addToast({
+        title: "Dosya eklenemedi",
+        description: "Lütfen dosyayı yeniden seçin ve tekrar deneyin.",
+        variant: "error"
+      });
+    }
+  };
+
+  const handleDocumentRemove = (documentId: string) => {
+    setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
+  };
 
   const pendingItems = useMemo<PendingEntry[]>(() => {
-    return tripItems
-      .filter(
-        (item) =>
-          item.labSentAt &&
-          item.labStatus !== "ACCEPTED" &&
-          item.labStatus !== "APPROVED"
-      )
-      .map((item) => {
-        const companyProduct = companyProductMap.get(item.companyProductId);
-        if (!companyProduct) return null;
-        const company = companyMap.get(companyProduct.companyId);
-        const product = productMap.get(companyProduct.productId);
-        if (!company || !product) return null;
-        const form = labForms.find((lab) => lab.tripItemId === item.id);
+    return tripItems.reduce<PendingEntry[]>((accumulator, item) => {
+      if (
+        !item.labSentAt ||
+        item.labStatus === "ACCEPTED" ||
+        item.labStatus === "APPROVED" ||
+        item.labStatus === "WAITING_CONFIRM"
+      ) {
+        return accumulator;
+      }
 
-        return {
-          item,
-          companyName: company.name,
-          productName: product.name,
-          productStandard: product.standardNo ?? undefined,
-          productCode: companyProduct.productCode,
-          labId: item.labAssignedLabId,
-          labEntryCode: item.labEntryCode,
-          labSentAt: item.labSentAt ?? item.sampledAt,
-          labFormData: form?.data,
-          companyProductId: companyProduct.id
-        };
-      })
-      .filter((entry): entry is PendingEntry => entry !== null)
-      .sort((a, b) => {
-        const aDate = a.labSentAt ? Date.parse(a.labSentAt) : 0;
-        const bDate = b.labSentAt ? Date.parse(b.labSentAt) : 0;
-        return bDate - aDate;
+      const companyProduct = companyProductMap.get(item.companyProductId);
+      if (!companyProduct) return accumulator;
+      const company = companyMap.get(companyProduct.companyId);
+      const product = productMap.get(companyProduct.productId);
+      if (!company || !product) return accumulator;
+      const form = labForms.find((lab) => lab.tripItemId === item.id);
+
+      accumulator.push({
+        item,
+        companyName: company.name,
+        productName: product.name,
+        productStandard: product.standardNo ?? undefined,
+        productCode: companyProduct.productCode,
+        labId: item.labAssignedLabId,
+        labEntryCode: item.labEntryCode,
+        labSentAt: item.labSentAt ?? item.sampledAt,
+        labFormData: form?.data,
+        labNotes: form?.labNotes,
+        cpcNotes: form?.cpcNotes,
+        documents: form?.documents ?? [],
+        companyProductId: companyProduct.id
       });
+
+      return accumulator;
+    }, []).sort((a, b) => {
+      const aDate = a.labSentAt ? Date.parse(a.labSentAt) : 0;
+      const bDate = b.labSentAt ? Date.parse(b.labSentAt) : 0;
+      return bDate - aDate;
+    });
   }, [tripItems, companyMap, productMap, companyProductMap, labForms]);
 
   useEffect(() => {
     if (!selectedItem) {
       setFormValues({});
-      setNotes("");
+      setLabNotes("");
+      setDocuments([]);
       return;
     }
 
@@ -94,14 +152,12 @@ const LabProcessingView = () => {
 
     fieldConfig.forEach((field) => {
       const rawValue = existingData[field.key];
-      nextValues[field.key] =
-        rawValue !== undefined && rawValue !== null ? String(rawValue) : "";
+      nextValues[field.key] = rawValue !== undefined && rawValue !== null ? String(rawValue) : "";
     });
 
     setFormValues(nextValues);
-    setNotes(
-      typeof existingData.notes === "string" ? existingData.notes : ""
-    );
+    setLabNotes(selectedItem.labNotes ?? "");
+    setDocuments((selectedItem.documents ?? []).map((doc) => ({ ...doc })));
   }, [selectedItem]);
 
   const columns: TableColumn<PendingEntry>[] = [
@@ -178,26 +234,24 @@ const LabProcessingView = () => {
   const handleSubmit = () => {
     if (!allowEdit || !selectedItem || !canSubmit) return;
 
-    const data: Record<string, unknown> = {
-      ...formValues,
-      notes
-    };
-
     upsertLabForm({
       tripItemId: selectedItem.item.id,
       standardNo: selectedItem.productStandard,
-      data,
-      status: "APPROVED"
+      data: { ...formValues },
+      status: "WAITING_CONFIRM",
+      labNotes: labNotes || undefined,
+      cpcNotes: selectedItem.cpcNotes,
+      documents: documents.map((doc) => ({ ...doc }))
     });
-    updateTripItemLabStatus(selectedItem.item.id, "ACCEPTED");
     addToast({
-      title: "Numune kabul edildi",
+      title: "Form onaya gönderildi",
       description: isLabUser
         ? selectedItem.productName
         : `${selectedItem.companyName} - ${selectedItem.productName}`,
       variant: "success"
     });
     setSelectedItem(null);
+    setDocuments([]);
   };
 
   const shipmentDetails = selectedItem?.item.labShipmentDetails ?? null;
@@ -211,15 +265,15 @@ const LabProcessingView = () => {
     }
     return String(value);
   };
+
   const drawerDescription = selectedItem
     ? isLabUser
       ? selectedItem.productStandard
         ? `${selectedItem.productName} (${selectedItem.productStandard})`
         : selectedItem.productName
-      : `${selectedItem.companyName} / ${selectedItem.productName}${
-          selectedItem.productStandard ? ` (${selectedItem.productStandard})` : ""
-        }`
+      : `${selectedItem.companyName} / ${selectedItem.productName}${selectedItem.productStandard ? ` (${selectedItem.productStandard})` : ""}`
     : undefined;
+
   const drawerFooter = allowEdit ? (
     <div className="flex justify-end gap-2">
       <Button variant="ghost" onClick={() => setSelectedItem(null)}>
@@ -241,9 +295,7 @@ const LabProcessingView = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Laboratuvar İş Akışı</h1>
-        <p className="text-sm text-slate-500">
-          Gönderilen numuneleri inceleyin, girin ve kabul edin.
-        </p>
+        <p className="text-sm text-slate-500">Gönderilen numuneleri inceleyin, girin ve kabul edin.</p>
       </div>
 
       <Table
@@ -303,34 +355,30 @@ const LabProcessingView = () => {
               </div>
             ) : null}
 
-            <div className="space-y-4">
-              {fieldConfig.map((field) => (
-                <label key={field.key} className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  {field.label}
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    type={field.isDate ? "date" : "text"}
-                    value={formValues[field.key] ?? ""}
-                    disabled={!allowEdit}
-                    onChange={(event) =>
+            <LabFormDetails
+              fieldConfig={fieldConfig}
+              fieldValues={formValues}
+              onFieldChange={
+                allowEdit
+                  ? (key, value) =>
                       setFormValues((prev) => ({
                         ...prev,
-                        [field.key]: event.target.value
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                Açıklama
-                <textarea
-                  className="min-h-[96px] rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  value={notes}
-                  disabled={!allowEdit}
-                  onChange={(event) => setNotes(event.target.value)}
-                />
-              </label>
-            </div>
+                      [key]: value
+                    }))
+                  : undefined
+              }
+              fieldsDisabled={!allowEdit}
+              documents={documents}
+              onDocumentAdd={allowEdit ? handleDocumentAdd : undefined}
+              onDocumentRemove={allowEdit ? handleDocumentRemove : undefined}
+              documentActionsDisabled={!allowEdit}
+              labNote={labNotes}
+              onLabNoteChange={allowEdit ? (value) => setLabNotes(value) : undefined}
+              labNoteDisabled={!allowEdit}
+              cpcNote={selectedItem.cpcNotes ?? ""}
+              cpcNotePlaceholder="CPC notu bulunmuyor"
+              cpcNoteDisabled
+            />
           </div>
         ) : null}
       </Drawer>
@@ -339,3 +387,4 @@ const LabProcessingView = () => {
 };
 
 export default LabProcessingView;
+

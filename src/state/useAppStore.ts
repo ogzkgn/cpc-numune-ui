@@ -4,7 +4,6 @@ import {
   companies as mockCompanies,
   companyProducts as mockCompanyProducts,
   employees as mockEmployees,
-  labForms as mockLabForms,
   labs as mockLabs,
   products as mockProducts,
   sites as mockSites,
@@ -20,6 +19,7 @@ import type {
   Employee,
   Lab,
   LabForm,
+  LabFormDocument,
   LabShipmentDetails,
   Product,
   Site,
@@ -65,6 +65,9 @@ type UpsertLabFormInput = {
   standardNo?: string;
   data: Record<string, unknown>;
   status: LabForm["status"];
+  labNotes?: string;
+  cpcNotes?: string;
+  documents?: LabFormDocument[];
 };
 
 type CompleteTripInput = Omit<TripCompletion, "createdAt">;
@@ -128,7 +131,7 @@ const recalcEmployeeStatuses = (employees: Employee[], trips: Trip[]): Employee[
 
 const generateId = () => Math.floor(Date.now() + Math.random() * 1000);
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set) => ({
   companies: cloneData(mockCompanies),
   sites: cloneData(mockSites),
   products: cloneData(mockProducts),
@@ -137,7 +140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   employees: cloneData(mockEmployees),
   trips: cloneData(mockTrips),
   tripItems: cloneData(mockTripItems),
-  labForms: cloneData(mockLabForms),
+  labForms: [],
   tripCompletions: cloneData(mockTripCompletions),
   samplingCycles: [
     { productType: "slag", months: 2 },
@@ -171,7 +174,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   openTripPlanner: (companyProductIds) =>
-    set((state) => ({
+    set(() => ({
       tripPlanner: {
         open: true,
         selectedCompanyProductIds: companyProductIds
@@ -333,12 +336,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  upsertLabForm: ({ tripItemId, standardNo, data, status }) => {
+  upsertLabForm: ({ tripItemId, standardNo, data, status, labNotes, cpcNotes, documents }) => {
     set((state) => {
       const existing = state.labForms.find((form) => form.tripItemId === tripItemId);
       const timestamp = new Date().toISOString();
-      const resolvedStatus: TripItemLabStatus =
-        status === "APPROVED" ? "ACCEPTED" : status === "SUBMITTED" ? "SUBMITTED" : "DRAFT";
+      let resolvedStatus: TripItemLabStatus;
+      switch (status) {
+        case "APPROVED":
+          resolvedStatus = "ACCEPTED";
+          break;
+        case "WAITING_CONFIRM":
+          resolvedStatus = "WAITING_CONFIRM";
+          break;
+        case "SUBMITTED":
+          resolvedStatus = "SUBMITTED";
+          break;
+        case "DRAFT":
+        default:
+          resolvedStatus = "DRAFT";
+          break;
+      }
 
       const nextLabForms = existing
         ? state.labForms.map((form) =>
@@ -348,7 +365,9 @@ export const useAppStore = create<AppState>((set, get) => ({
                   standardNo,
                   data,
                   status,
-                  updatedAt: timestamp
+                  updatedAt: timestamp,
+                  ...(labNotes !== undefined ? { labNotes } : {}),
+                  ...(cpcNotes !== undefined ? { cpcNotes } : {})
                 }
               : form
           )
@@ -360,7 +379,9 @@ export const useAppStore = create<AppState>((set, get) => ({
               standardNo,
               data,
               status,
-              updatedAt: timestamp
+              updatedAt: timestamp,
+              ...(labNotes !== undefined ? { labNotes } : {}),
+              ...(cpcNotes !== undefined ? { cpcNotes } : {})
             }
           ];
 

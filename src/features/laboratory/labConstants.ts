@@ -8,7 +8,7 @@ export const FIELD_LABELS: Record<string, LabFieldConfig[]> = {
   "TS EN 206": [
     { label: "7 Gün Basınç (MPa)", key: "day7" },
     { label: "28 Gün Basınç (MPa)", key: "day28" },
-    { label: "Not", key: "remarks" }
+    { label: "Dayanıklılık", key: "remarks" }
   ],
   "TS EN 197-1": [
     { label: "Başlangıç Priz Süresi (dk)", key: "initialSetting" },

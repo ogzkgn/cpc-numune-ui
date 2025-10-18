@@ -33,7 +33,8 @@ export const labStatusLabels: Record<TripItemLabStatus, string> = {
   ACCEPTED: "Kabul Edildi",
   DRAFT: "Taslak",
   SUBMITTED: "Gönderildi",
-  APPROVED: "Onaylandı"
+  APPROVED: "Onaylandı",
+  WAITING_CONFIRM: "Onay Bekliyor"
 };
 
 export const labStatusTokens: Record<TripItemLabStatus, string> = {
@@ -41,7 +42,8 @@ export const labStatusTokens: Record<TripItemLabStatus, string> = {
   ACCEPTED: "bg-slate-200 text-slate-800",
   DRAFT: "bg-amber-100 text-amber-700",
   SUBMITTED: "bg-blue-100 text-blue-700",
-  APPROVED: "bg-green-100 text-green-700"
+  APPROVED: "bg-green-100 text-green-700",
+  WAITING_CONFIRM: "bg-orange-100 text-orange-700"
 };
 
 export const employeeStatusLabels: Record<EmployeeStatus, string> = {
@@ -53,3 +55,4 @@ export const employeeStatusTokens: Record<EmployeeStatus, string> = {
   available: "bg-green-100 text-green-700",
   busy: "bg-slate-200 text-slate-700"
 };
+

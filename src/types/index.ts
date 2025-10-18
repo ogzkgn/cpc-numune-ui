@@ -103,7 +103,7 @@ export interface Trip {
   dutyAssignments: Record<number, TripDutyAssignment>;
 }
 
-export type TripItemLabStatus = "PENDING" | "ACCEPTED" | "DRAFT" | "SUBMITTED" | "APPROVED";
+export type TripItemLabStatus = "PENDING" | "ACCEPTED" | "DRAFT" | "SUBMITTED" | "APPROVED" | "WAITING_CONFIRM";
 
 export interface LabShipmentDetails {
   productionDate: string;
@@ -129,7 +129,7 @@ export interface TripItem {
   dutyAssigneeIds: number[];
 }
 
-export type LabFormStatus = "DRAFT" | "SUBMITTED" | "APPROVED";
+export type LabFormStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "WAITING_CONFIRM";
 
 export interface LabForm {
   id: number;
@@ -138,6 +138,9 @@ export interface LabForm {
   data: Record<string, unknown>;
   status: LabFormStatus;
   updatedAt?: string;
+  labNotes?: string;
+  cpcNotes?: string;
+  documents?: LabFormDocument[];
 }
 
 export interface ConfigurableCycle {
@@ -152,4 +155,14 @@ export interface ToastMessage {
   title: string;
   description?: string;
   variant: ToastVariant;
+}
+
+export interface LabFormDocument {
+  id: string;
+  name: string;
+  size: number;
+  type?: string;
+  uploadedAt: string;
+  dataUrl?: string;
+  url?: string;
 }

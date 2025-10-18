@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -7,8 +7,11 @@ import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
+import { labStatusLabels, labStatusTokens } from "../../utils/labels";
 import { FALLBACK_DATA, SHIPMENT_FIELDS, getFieldConfig } from "./labConstants";
+import LabFormDetails from "./components/LabFormDetails";
 import type { TableColumn } from "../../components/ui/Table";
+import type { LabFormDocument } from "../../types";
 
 const LabInboxView = () => {
   const tripItems = useAppStore((state) => state.tripItems);
@@ -16,11 +19,17 @@ const LabInboxView = () => {
   const labForms = useAppStore((state) => state.labForms);
   const labs = useAppStore((state) => state.labs);
   const activeRole = useAppStore((state) => state.activeRole);
+  const upsertLabForm = useAppStore((state) => state.upsertLabForm);
+  const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
+  const addToast = useAppStore((state) => state.addToast);
   const { companyProductMap, companyMap, productMap } = useEntityMaps();
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
 
   const [selectedItem, setSelectedItem] = useState<(typeof tripItems)[number] | null>(null);
+  const [isEditingRevision, setIsEditingRevision] = useState(false);
+  const [revisionNote, setRevisionNote] = useState("");
   const isLabUser = activeRole === "lab";
+  const isAdminUser = activeRole === "admin";
 
   const inboxItems = useMemo(() => {
     return tripItems
@@ -32,7 +41,13 @@ const LabInboxView = () => {
         const form = labForms.find((lab) => lab.tripItemId === item.id);
 
         if (!company || !product || !companyProduct) return null;
-        if (item.labStatus !== "ACCEPTED" && item.labStatus !== "APPROVED") return null;
+        if (
+          item.labStatus !== "ACCEPTED" &&
+          item.labStatus !== "APPROVED" &&
+          item.labStatus !== "WAITING_CONFIRM"
+        ) {
+          return null;
+        }
 
         return {
           item,
@@ -80,9 +95,9 @@ const LabInboxView = () => {
       id: "status",
       header: "Durum",
       cell: (row) => {
-        const isReceived = row.item.labStatus === "ACCEPTED" || row.item.labStatus === "APPROVED";
-        const label = isReceived ? "Alındı" : "Bekleniyor";
-        const token = isReceived ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700";
+        const status = (row.item.labStatus ?? "PENDING") as keyof typeof labStatusLabels;
+        const label = labStatusLabels[status];
+        const token = labStatusTokens[status];
         return <Badge className={token}>{label}</Badge>;
       }
     },
@@ -105,25 +120,47 @@ const LabInboxView = () => {
     ? productMap.get(companyProductMap.get(selectedItem.companyProductId)?.productId ?? 0)
     : undefined;
 
-  const formData = useMemo(() => {
-    if (
-      !selectedItem ||
-      (selectedItem.labStatus !== "ACCEPTED" && selectedItem.labStatus !== "APPROVED")
-    ) {
-      return null;
-    }
-    const form = labForms.find((lab) => lab.tripItemId === selectedItem.id);
-    if (form) {
-      return form.data;
-    }
-    return FALLBACK_DATA;
-  }, [selectedItem, labForms]);
+  const selectedForm = useMemo(
+    () => (selectedItem ? labForms.find((lab) => lab.tripItemId === selectedItem.id) : undefined),
+    [selectedItem, labForms]
+  );
+
+  useEffect(() => {
+    setIsEditingRevision(false);
+    setRevisionNote(selectedForm?.cpcNotes ?? "");
+  }, [selectedForm]);
 
   const displayFields = getFieldConfig(currentProduct?.standardNo);
 
   const shipmentDetails = selectedItem?.labShipmentDetails ?? null;
-  const isAccepted =
-    selectedItem?.labStatus === "ACCEPTED" || selectedItem?.labStatus === "APPROVED";
+  const isAccepted = selectedItem?.labStatus === "ACCEPTED" || selectedItem?.labStatus === "APPROVED";
+  const isWaitingConfirm = selectedItem?.labStatus === "WAITING_CONFIRM";
+  const showFormDetails = isAccepted || isWaitingConfirm;
+
+  const formData = (selectedForm?.data ?? FALLBACK_DATA) as Record<string, unknown>;
+  const labNote = selectedForm?.labNotes ?? null;
+  const cpcNote = selectedForm?.cpcNotes ?? null;
+  const displayedCpcNote = isEditingRevision ? revisionNote : cpcNote;
+
+  const toInputValue = (value: unknown) => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value.toString() : "";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    return String(value);
+  };
+
+  const fieldValues = displayFields.reduce<Record<string, string>>((accumulator, field) => {
+    accumulator[field.key] = toInputValue(formData[field.key]);
+    return accumulator;
+  }, {});
+  const labNoteValue = toInputValue(labNote);
+  const cpcNoteValue = toInputValue(displayedCpcNote);
+  const isRevisionEditable = isWaitingConfirm && isAdminUser && isEditingRevision;
+  const documents = (selectedForm?.documents ?? []).map((doc) => ({ ...doc })) as LabFormDocument[];
 
   const renderValue = (value: unknown) => {
     if (value === null || value === undefined) return "-";
@@ -135,6 +172,92 @@ const LabInboxView = () => {
     }
     return String(value);
   };
+
+  const handleApprove = () => {
+    if (!selectedItem || !selectedForm) return;
+    const normalizedData = { ...(selectedForm.data ?? {}) } as Record<string, unknown>;
+
+    upsertLabForm({
+      tripItemId: selectedItem.id,
+      standardNo: selectedForm.standardNo,
+      data: normalizedData,
+      status: "APPROVED",
+      labNotes: selectedForm.labNotes,
+      cpcNotes: selectedForm.cpcNotes,
+      documents: (selectedForm.documents ?? []).map((doc) => ({ ...doc }))
+    });
+    updateTripItemLabStatus(selectedItem.id, "ACCEPTED");
+    addToast({
+      title: "Form onaylandı",
+      description: selectedItem.labEntryCode ?? undefined,
+      variant: "success"
+    });
+    setIsEditingRevision(false);
+    setSelectedItem(null);
+  };
+
+  const handleRequestRevision = (note: string) => {
+    if (!selectedItem || !selectedForm) return;
+    const normalizedData = { ...(selectedForm.data ?? {}) } as Record<string, unknown>;
+
+    upsertLabForm({
+      tripItemId: selectedItem.id,
+      standardNo: selectedForm.standardNo,
+      data: normalizedData,
+      status: "DRAFT",
+      labNotes: selectedForm.labNotes,
+      cpcNotes: note,
+      documents: (selectedForm.documents ?? []).map((doc) => ({ ...doc }))
+    });
+    updateTripItemLabStatus(selectedItem.id, "PENDING");
+    addToast({
+      title: "Revize talebi gönderildi",
+      description: selectedItem.labEntryCode ?? undefined,
+      variant: "info"
+    });
+    setIsEditingRevision(false);
+    setSelectedItem(null);
+  };
+
+  const handleRevisionAction = () => {
+    if (!selectedItem || !selectedForm) return;
+    if (!isEditingRevision) {
+      setIsEditingRevision(true);
+      setRevisionNote(selectedForm.cpcNotes ?? "");
+      return;
+    }
+    const trimmed = revisionNote.trim();
+    if (!trimmed) {
+      addToast({
+        title: "Revize notu gerekli",
+        description: "Lütfen laboratuvara iletilecek açıklamayı girin.",
+        variant: "error"
+      });
+      return;
+    }
+    handleRequestRevision(trimmed);
+  };
+
+  const drawerFooter = !selectedItem
+    ? undefined
+    : selectedItem.labStatus === "WAITING_CONFIRM" && isAdminUser
+      ? (
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setSelectedItem(null)}>
+            Kapat
+          </Button>
+          <Button variant="secondary" onClick={handleRevisionAction}>
+            {isEditingRevision ? "Revizeyi gönder" : "Revize iste"}
+          </Button>
+          <Button onClick={handleApprove}>Formu onayla</Button>
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <Button variant="ghost" onClick={() => setSelectedItem(null)}>
+            Kapat
+          </Button>
+        </div>
+      );
 
   return (
     <div className="space-y-6">
@@ -155,10 +278,12 @@ const LabInboxView = () => {
         onClose={() => setSelectedItem(null)}
         title="Laboratuvar Formu"
         description={
-          currentProduct ? `${currentProduct.name} / ${currentProduct.standardNo ?? "Standart belirtilmedi"}` : undefined
+          currentProduct
+            ? `${currentProduct.name} / ${currentProduct.standardNo ?? "Standart belirtilmedi"}`
+            : undefined
         }
         width="lg"
-        footer={null}
+        footer={drawerFooter}
       >
         {selectedItem ? (
           <div className="space-y-4 text-sm text-slate-700">
@@ -179,24 +304,25 @@ const LabInboxView = () => {
               </div>
             </div>
 
-            {isAccepted ? (
-              formData ? (
-                <div className="space-y-4 text-sm text-slate-700">
-                  {displayFields.map((field) => (
-                    <div key={field.key} className="flex flex-col gap-1">
-                      <span className="text-xs font-semibold text-slate-500">{field.label}</span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                        {renderValue(formData[field.key])}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-semibold text-slate-500">Açıklama</span>
-                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                      {renderValue(formData["notes"])}
-                    </span>
-                  </div>
-                </div>
+            {showFormDetails ? (
+              selectedForm ? (
+                <LabFormDetails
+                  className="text-sm text-slate-700"
+                  fieldConfig={displayFields}
+                  fieldValues={fieldValues}
+                  documents={documents}
+                  documentActionsDisabled
+                  fieldsDisabled
+                  labNote={labNoteValue}
+                  labNoteDisabled
+                  labNotePlaceholder="-"
+                  cpcNote={isRevisionEditable ? revisionNote : cpcNoteValue}
+                  cpcNotePlaceholder="CPC notu bulunmuyor"
+                  cpcNoteDisabled={!isRevisionEditable}
+                  onCpcNoteChange={
+                    isRevisionEditable ? (value) => setRevisionNote(value) : undefined
+                  }
+                />
               ) : (
                 <p className="text-sm text-slate-500">Form verisi bulunamadı.</p>
               )
@@ -229,6 +355,3 @@ const LabInboxView = () => {
 };
 
 export default LabInboxView;
-
-
-

@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from "react";
-import { Filter, Mail, Plus, RotateCw } from "lucide-react";
+import { Filter, Plus, RotateCw } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -253,19 +253,6 @@ const DueThisMonthView = () => {
           </Button>
           <Button variant="ghost" size="sm" icon={<RotateCw className="h-3.5 w-3.5" />} onClick={handleResetFilters}>
             Sıfırla
-          </Button>
-          <Button
-            variant="secondary"
-            icon={<Mail className="h-4 w-4" />}
-            onClick={() =>
-              addToast({
-                title: "E-posta stubları",
-                description: "Gerçek gönderim backend ile yapılacak",
-                variant: "info"
-              })
-            }
-          >
-            E-posta Gönder
           </Button>
           <Button icon={<Plus className="h-4 w-4" />} onClick={handleCreateTrip}>
             Seyahat Oluştur

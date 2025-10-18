@@ -176,9 +176,8 @@ export const tripItems: TripItem[] = [
     id: 1,
     tripId: 1,
     companyProductId: 1,
-    sampled: true,
-    sampledAt: "2025-09-22",
-    labStatus: "ACCEPTED",
+    sampled: false,
+    labStatus: "PENDING",
     dutyType: "NUMUNE",
     dutyAssigneeIds: [1, 4]
   },
@@ -220,20 +219,7 @@ export const tripItems: TripItem[] = [
   }
 ];
 
-export const labForms: LabForm[] = [
-  {
-    id: 1,
-    tripItemId: 1,
-    standardNo: "TS EN 206",
-    status: "SUBMITTED",
-    data: {
-      day7: 33.5,
-      day28: 44.1,
-      remarks: "Standarda uygun"
-    },
-    updatedAt: "2025-09-24T15:45:00"
-  }
-];
+export const labForms: LabForm[] = [];
 
 export const labs: Lab[] = [
   { id: 1, name: "İstanbul Merkez Lab." },
@@ -245,3 +231,4 @@ export const labs: Lab[] = [
 ];
 
 export const tripCompletions: TripCompletion[] = [];
+
