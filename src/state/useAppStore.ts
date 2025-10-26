@@ -21,9 +21,11 @@ import type {
   LabForm,
   LabFormDocument,
   LabShipmentDetails,
+  LodgingProvider,
   Product,
   Site,
   ToastMessage,
+  TransportMode,
   Trip,
   TripCompletion,
   TripCompletionEntry,
@@ -50,10 +52,14 @@ type CreateTripInput = {
   name?: string;
   plannedAt?: string;
   notes?: string;
+  plannedBy?: string;
   companyProductIds: number[];
   assigneeIds: number[];
   status?: TripStatus;
   duties?: PlannerDutyConfig[];
+  transportMode?: TransportMode;
+  vehiclePlate?: string;
+  lodgingProvider?: LodgingProvider;
 };
 
 type UpdateCompanyProductInput = Partial<Omit<CompanyProduct, "id">> & {
@@ -189,7 +195,19 @@ export const useAppStore = create<AppState>((set) => ({
       }
     })),
 
-  createTrip: ({ name, plannedAt, notes, companyProductIds, assigneeIds, duties, status = "ACTIVE" }) => {
+  createTrip: ({
+    name,
+    plannedAt,
+    notes,
+    plannedBy,
+    companyProductIds,
+    assigneeIds,
+    duties,
+    status = "ACTIVE",
+    transportMode,
+    vehiclePlate,
+    lodgingProvider
+  }: CreateTripInput) => {
     const nextId = generateId();
     const now = new Date().toISOString();
 
@@ -217,6 +235,10 @@ export const useAppStore = create<AppState>((set) => ({
       status,
       assigneeIds,
       notes,
+      plannedBy,
+      transportMode,
+      vehiclePlate,
+      lodgingProvider,
       dutyAssignments
     };
 

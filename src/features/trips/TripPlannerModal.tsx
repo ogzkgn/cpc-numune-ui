@@ -10,7 +10,7 @@ import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { hasSkillCoverage, isEmployeeAvailable } from "../../utils/validation";
 import { employeeStatusLabels, employeeStatusTokens, productTypeLabels } from "../../utils/labels";
-import type { ProductType, TripDutyType } from "../../types";
+import type { LodgingProvider, ProductType, TransportMode, TripDutyType } from "../../types";
 
 const steps = [
   { id: "items", title: "Firma-Ürün Seçimi", description: "Seyahate dahil edilecek kayıtları işaretleyin" },
@@ -29,10 +29,22 @@ const dutyTypeOptions: { value: TripDutyType; label: string }[] = [
 ];
 const dutyTypeLabels: Record<TripDutyType, string> = {
   NUMUNE: "Numune",
-  "GÖZETİM": "Gözetim",
+  GÖZETİM: "Gözetim",
   BOTH: "Gözetim + Numune"
 };
 
+
+const transportOptions: { value: TransportMode; label: string }[] = [
+  { value: "COMPANY_VEHICLE", label: "Şirket Aracı" },
+  { value: "BUS", label: "Otobüs" },
+  { value: "PLANE", label: "Uçak" },
+  { value: "TRAIN", label: "Tren" }
+];
+
+const lodgingOptions: { value: LodgingProvider; label: string }[] = [
+  { value: "COMPANY", label: "Firma Tarafından" },
+  { value: "CPC", label: "CPC Tarafından" }
+];
 
 const TripPlannerModal = () => {
   const tripPlanner = useAppStore((state) => state.tripPlanner);
@@ -49,7 +61,11 @@ const TripPlannerModal = () => {
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
   const [dutyConfig, setDutyConfig] = useState<Record<number, { dutyType: TripDutyType; dutyAssigneeIds: number[] }>>({});
   const [plannedAt, setPlannedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [transportMode, setTransportMode] = useState<TransportMode | "">("");
+  const [vehiclePlate, setVehiclePlate] = useState("");
+  const [lodgingProvider, setLodgingProvider] = useState<LodgingProvider | "">("");
   const [name, setName] = useState("");
+  const [plannedBy, setPlannedBy] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -59,7 +75,11 @@ const TripPlannerModal = () => {
       setSelectedAssigneeIds([]);
       setDutyConfig({});
       setPlannedAt(new Date().toISOString().slice(0, 16));
+      setTransportMode("");
+      setVehiclePlate("");
+      setLodgingProvider("");
       setName("");
+      setPlannedBy("");
       setNotes("");
     }
   }, [tripPlanner.open, tripPlanner.selectedCompanyProductIds]);
@@ -166,7 +186,18 @@ const TripPlannerModal = () => {
     if (!config.dutyType) return false;
     return config.dutyAssigneeIds.length > 0;
   });
-  const canSubmit = canProceedStep2 && Boolean(plannedAt) && dutyConfigValid;
+  const isCompanyVehicle = transportMode === "COMPANY_VEHICLE";
+  const transportSelected = transportMode !== "";
+  const lodgingSelected = lodgingProvider !== "";
+  const vehicleValid = !isCompanyVehicle || vehiclePlate.trim().length > 0;
+  const canSubmit =
+    canProceedStep2 && Boolean(plannedAt) && dutyConfigValid && transportSelected && lodgingSelected && vehicleValid;
+  const selectedTransportLabel = transportMode
+    ? transportOptions.find((option) => option.value === transportMode)?.label
+    : undefined;
+  const selectedLodgingLabel = lodgingProvider
+    ? lodgingOptions.find((option) => option.value === lodgingProvider)?.label
+    : undefined;
 
   const handleToggleProduct = (id: number) => {
     setSelectedCompanyProductIds((prev) => {
@@ -275,10 +306,14 @@ const TripPlannerModal = () => {
       name: name || undefined,
       plannedAt: isoDate,
       notes: notes || undefined,
+      plannedBy: plannedBy || undefined,
       companyProductIds: selectedCompanyProductIds,
       assigneeIds: selectedAssigneeIds,
       status: "ACTIVE",
-      duties: dutiesPayload
+      duties: dutiesPayload,
+      transportMode: transportMode || undefined,
+      vehiclePlate: isCompanyVehicle ? vehiclePlate.trim() || undefined : undefined,
+      lodgingProvider: lodgingProvider || undefined
     });
 
     addToast({ title: "Seyahat planlandı", variant: "success" });
@@ -295,6 +330,7 @@ const TripPlannerModal = () => {
       title="Seyahat Planlayıcı"
       description="Firma-ürün seçiminden ekip atamasına kadar süreci tamamlayın"
       size="xl"
+      className="max-w-5xl"
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="flex items-center gap-2">
@@ -324,7 +360,8 @@ const TripPlannerModal = () => {
         </div>
       }
     >
-      <Stepper steps={steps} activeStepId={activeStep}>
+      <div className="max-h-[70vh] overflow-y-auto pr-1">
+        <Stepper steps={steps} activeStepId={activeStep}>
         {activeStep === "items" ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -414,7 +451,7 @@ const TripPlannerModal = () => {
         ) : null}
 
         {activeStep === "plan" ? (
-          <div className="space-y-6">
+          <div className="space-y-6 pb-2">
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Planlanan Tarih / Saat
@@ -426,11 +463,68 @@ const TripPlannerModal = () => {
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                Ulaşım Türü
+                <select
+                  value={transportMode}
+                  onChange={(event) => {
+                    const next = event.target.value as TransportMode | "";
+                    setTransportMode(next);
+                    if (next !== "COMPANY_VEHICLE") {
+                      setVehiclePlate("");
+                    }
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Seçiniz</option>
+                  {transportOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {isCompanyVehicle ? (
+                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                  Araç Plaka No
+                  <input
+                    value={vehiclePlate}
+                    onChange={(event) => setVehiclePlate(event.target.value)}
+                    placeholder="34 ABC 123"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <span className="text-[11px] text-slate-500">Şirket aracı için plaka zorunludur.</span>
+                </label>
+              ) : null}
+              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                Konaklama
+                <select
+                  value={lodgingProvider}
+                  onChange={(event) => setLodgingProvider(event.target.value as LodgingProvider | "")}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Seçiniz</option>
+                  {lodgingOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="md:col-span-2 flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Seyahat Adı (Opsiyonel)
                 <input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="Örn. Marmara saha turu"
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="md:col-span-2 flex flex-col gap-1 text-sm font-medium text-slate-700">
+                Planlamayı Yapan
+                <input
+                  value={plannedBy}
+                  onChange={(event) => setPlannedBy(event.target.value)}
+                  placeholder="Örn. Ayşe Yıldız"
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
@@ -458,6 +552,7 @@ const TripPlannerModal = () => {
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-3 py-2 font-medium">Firma / Ürün</th>
+                      <th className="px-3 py-2 font-medium">Ürün Kodu</th>
                       <th className="px-3 py-2 font-medium">Görev Nedeni*</th>
                       <th className="px-3 py-2 font-medium">Görev Ekibi</th>
                     </tr>
@@ -477,6 +572,9 @@ const TripPlannerModal = () => {
                               {item.product.standardNo ? <span>Standart: {item.product.standardNo}</span> : null}
                               {item.site ? <span className="ml-2">Lokasyon: {item.site.city}</span> : null}
                             </div>
+                          </td>
+                          <td className="px-3 py-3 align-top text-slate-700">
+                            {item.cp.productCode ?? "-"}
                           </td>
                           <td className="px-3 py-3 align-top">
                             <select
@@ -541,6 +639,10 @@ const TripPlannerModal = () => {
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                 <p>Firma-Ürün sayısı: {selectedProducts.length}</p>
                 <p>Atanan ekip: {selectedAssignees.map((item) => item.name).join(", ") || "Belirtilmedi"}</p>
+                <p>Ulaşım: {selectedTransportLabel ?? "Belirtilmedi"}</p>
+                {isCompanyVehicle ? <p>Ara? Plakas?: {vehiclePlate || "-"}</p> : null}
+                <p>Konaklama: {selectedLodgingLabel ?? "Belirtilmedi"}</p>
+                <p>Planlamayı yapan: {plannedBy || "Belirtilmedi"}</p>
                 <p>Tarih: {plannedAt ? formatDate(new Date(plannedAt).toISOString()) : "Belirtilmedi"}</p>
                 <div className="mt-2 space-y-1">
                   <p className="text-[11px] font-semibold text-slate-700">Görev dağılımları:</p>
@@ -556,7 +658,8 @@ const TripPlannerModal = () => {
 
                       return (
                         <li key={item.cp.id}>
-                          {item.company.name} / {item.product.name}: {dutyLabel}{" "}
+                          {item.company.name} / {item.product.name}
+                          {item.cp.productCode ? ` [${item.cp.productCode}]` : ""}: {dutyLabel}{" "}
                           {teamNames ? `(${teamNames})` : "(Ekip seçilmedi)"}
                         </li>
                       );
@@ -568,8 +671,11 @@ const TripPlannerModal = () => {
           </div>
         ) : null}
       </Stepper>
+      </div>
     </Modal>
   );
 };
 
 export default TripPlannerModal;
+
+

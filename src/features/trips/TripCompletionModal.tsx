@@ -62,7 +62,7 @@ const lodgingOptions: { value: LodgingProvider; label: string }[] = [
 
 const dutyTypeLabels: Record<TripDutyType, string> = {
   NUMUNE: "Numune",
-  "GÖZETİM":"Gözetim",
+  GÖZETİM:"Gözetim",
   BOTH: "Gözetim + Numune"
 };
 
@@ -130,11 +130,11 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
 
     setFormState({
       completedBy: existingCompletion?.completedByEmployeeIds ?? trip.assigneeIds,
-      transportMode: existingCompletion?.transportMode ?? "",
-      vehiclePlate: existingCompletion?.vehiclePlate ?? "",
+      transportMode: existingCompletion?.transportMode ?? trip?.transportMode ?? "",
+      vehiclePlate: existingCompletion?.vehiclePlate ?? trip?.vehiclePlate ?? "",
       totalKm: existingCompletion?.totalKm ? String(existingCompletion.totalKm) : "",
       totalDays: existingCompletion?.totalDays ? String(existingCompletion.totalDays) : "",
-      lodgingProvider: existingCompletion?.lodgingProvider ?? "",
+      lodgingProvider: existingCompletion?.lodgingProvider ?? trip?.lodgingProvider ?? "",
       entries
     });
     setError(null);
@@ -144,13 +144,24 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     () => (trip ? employees.filter((employee) => trip.assigneeIds.includes(employee.id)) : []),
     [employees, trip]
   );
+  const effectiveTransportMode = existingCompletion?.transportMode ?? trip?.transportMode ?? formState.transportMode;
+  const effectiveVehiclePlate = existingCompletion?.vehiclePlate ?? trip?.vehiclePlate ?? formState.vehiclePlate;
+  const effectiveLodgingProvider = existingCompletion?.lodgingProvider ?? trip?.lodgingProvider ?? formState.lodgingProvider;
+  const displayTransportLabel = effectiveTransportMode
+    ? transportOptions.find((option) => option.value === effectiveTransportMode)?.label
+    : undefined;
+  const displayLodgingLabel = effectiveLodgingProvider
+    ? lodgingOptions.find((option) => option.value === effectiveLodgingProvider)?.label
+    : undefined;
+  const hasPlannedTransport = Boolean(trip?.transportMode);
+  const hasPlannedLodging = Boolean(trip?.lodgingProvider);
 
-  const isCompanyVehicle = formState.transportMode === "COMPANY_VEHICLE";
+  const isCompanyVehicle = effectiveTransportMode === "COMPANY_VEHICLE";
   const requiresDistanceInfo =
-    formState.transportMode === "COMPANY_VEHICLE" ||
-    formState.transportMode === "BUS" ||
-    formState.transportMode === "PLANE" ||
-    formState.transportMode === "TRAIN";
+    effectiveTransportMode === "COMPANY_VEHICLE" ||
+    effectiveTransportMode === "BUS" ||
+    effectiveTransportMode === "PLANE" ||
+    effectiveTransportMode === "TRAIN";
 
   const handleToggleEmployee = (employeeId: number) => {
     setFormState((prev) => {
@@ -212,9 +223,9 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
   const isFormValid = () => {
     if (!trip) return false;
     if (!formState.completedBy.length) return false;
-    if (!formState.transportMode) return false;
-    if (!formState.lodgingProvider) return false;
-    if (isCompanyVehicle && !formState.vehiclePlate.trim()) return false;
+    if (!effectiveTransportMode) return false;
+    if (!effectiveLodgingProvider) return false;
+    if (isCompanyVehicle && !(effectiveVehiclePlate?.trim())) return false;
     if (requiresDistanceInfo && (!formState.totalKm || !formState.totalDays)) return false;
 
     return formState.entries.every((entry) => {
@@ -230,7 +241,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
   const handleSubmit = () => {
     if (!trip) return;
     if (!isFormValid()) {
-      setError("L?tfen zorunlu alanlar? doldurun.");
+      setError("Lütfen zorunlu alanları doldurun.");
       return;
     }
 
@@ -288,11 +299,11 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     completeTrip({
       tripId: trip.id,
       completedByEmployeeIds: formState.completedBy,
-      transportMode: formState.transportMode as TransportMode,
-      vehiclePlate: isCompanyVehicle ? formState.vehiclePlate || undefined : undefined,
+      transportMode: effectiveTransportMode as TransportMode,
+      vehiclePlate: isCompanyVehicle ? effectiveVehiclePlate?.trim() || undefined : undefined,
       totalKm: requiresDistanceInfo ? totalKmValue : undefined,
       totalDays: requiresDistanceInfo ? totalDaysValue : undefined,
-      lodgingProvider: formState.lodgingProvider || undefined,
+      lodgingProvider: effectiveLodgingProvider || undefined,
       entries: payloadEntries
     });
     onClose();
@@ -405,70 +416,100 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-700">Ulaşım Türü</h3>
-                <div className="mt-3 grid gap-2">
-                  {transportOptions.map((option) => (
-                    <label key={option.value} className="flex items-center gap-2 text-sm text-slate-600">
-                      <input
-                        type="radio"
-                        name="transportMode"
-                        className="h-4 w-4"
-                        value={option.value}
-                        checked={formState.transportMode === option.value}
-                        onChange={(event) => {
-                          const nextMode = event.target.value as TransportMode;
-                          setFormState((prev) => {
-                            const previousMode = prev.transportMode;
-                            const shouldResetDistance = previousMode !== nextMode;
-                            return {
-                              ...prev,
-                              transportMode: nextMode,
-                              vehiclePlate: nextMode === "COMPANY_VEHICLE" ? prev.vehiclePlate : "",
-                              totalKm: shouldResetDistance ? "" : prev.totalKm,
-                              totalDays: shouldResetDistance ? "" : prev.totalDays
-                            };
-                          });
-                          setError(null);
-                        }}
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
+                {hasPlannedTransport ? (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    <p className="font-medium text-slate-700">{displayTransportLabel ?? "Belirtilmedi"}</p>
+                    {effectiveTransportMode === "COMPANY_VEHICLE" ? (
+                      <p className="text-xs text-slate-500">Plaka: {effectiveVehiclePlate || "-"}</p>
+                    ) : null}
+                  
+                  </div>
+                ) : (
+                  <div className="mt-3 grid gap-2">
+                    {transportOptions.map((option) => (
+                      <label key={option.value} className="flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="radio"
+                          name="transportMode"
+                          className="h-4 w-4"
+                          value={option.value}
+                          checked={formState.transportMode === option.value}
+                          onChange={(event) => {
+                            const nextMode = event.target.value as TransportMode;
+                            setFormState((prev) => {
+                              const previousMode = prev.transportMode;
+                              const shouldResetDistance = previousMode !== nextMode;
+                              return {
+                                ...prev,
+                                transportMode: nextMode,
+                                vehiclePlate: nextMode === "COMPANY_VEHICLE" ? prev.vehiclePlate : "",
+                                totalKm: shouldResetDistance ? "" : prev.totalKm,
+                                totalDays: shouldResetDistance ? "" : prev.totalDays
+                              };
+                            });
+                            setError(null);
+                          }}
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-700">Konaklama</h3>
-                <div className="mt-3 grid gap-2">
-                  {lodgingOptions.map((option) => (
-                    <label key={option.value} className="flex items-center gap-2 text-sm text-slate-600">
-                      <input
-                        type="radio"
-                        name="lodgingProvider"
-                        className="h-4 w-4"
-                        value={option.value}
-                        checked={formState.lodgingProvider === option.value}
-                        onChange={(event) =>
-                          setFormState((prev) => ({
-                            ...prev,
-                            lodgingProvider: event.target.value as LodgingProvider
-                          }))
-                        }
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
+                {hasPlannedLodging ? (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    <p className="font-medium text-slate-700">{displayLodgingLabel ?? "Belirtilmedi"}</p>
+                 
+                  </div>
+                ) : (
+                  <div className="mt-3 grid gap-2">
+                    {lodgingOptions.map((option) => (
+                      <label key={option.value} className="flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="radio"
+                          name="lodgingProvider"
+                          className="h-4 w-4"
+                          value={option.value}
+                          checked={formState.lodgingProvider === option.value}
+                          onChange={(event) =>
+                            setFormState((prev) => ({
+                              ...prev,
+                              lodgingProvider: event.target.value as LodgingProvider
+                            }))
+                          }
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2 text-sm text-slate-600">
+                <h3 className="text-sm font-semibold text-slate-700">Planlamayı Yapan:</h3>
+                <p>
+                 {trip?.plannedBy || "Belirtilmedi"}
+                </p>
               </div>
               {isCompanyVehicle ? (
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                    Araç Plaka No
-                    <input
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      value={formState.vehiclePlate}
-                      onChange={(event) => setFormState((prev) => ({ ...prev, vehiclePlate: event.target.value }))}
-                      placeholder="34 CPC 123"
-                    />
-                  </label>
+                  {hasPlannedTransport ? (
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                      <p className="font-medium text-slate-700">Araç Plakası</p>
+                      <p>{effectiveVehiclePlate || "-"}</p>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                      Araç Plaka No
+                      <input
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        value={formState.vehiclePlate}
+                        onChange={(event) => setFormState((prev) => ({ ...prev, vehiclePlate: event.target.value }))}
+                        placeholder="34 CPC 123"
+                      />
+                    </label>
+                  )}
                   <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                     Toplam Yapılan KM
                     <input
@@ -519,12 +560,13 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
           </section>
 
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">Firma / ?r?n Bilgileri</h3>
+            <h3 className="text-sm font-semibold text-slate-700">Firma / Ürün Bilgileri</h3>
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="min-w-full divide-y divide-slate-200 text-xs md:text-sm">
                 <thead className="bg-slate-50">
                   <tr className="text-left text-slate-600">
                     <th className="px-3 py-2">Firma / Tesis</th>
+                    <th className="px-3 py-2">Ürün Kodu</th>
                     <th className="px-3 py-2">İlçe / İl</th>
                     <th className="px-3 py-2">Kapsam</th>
                     <th className="px-3 py-2">Görev Bilgisi</th>
@@ -532,18 +574,21 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                     <th className="px-3 py-2">Takip No</th>
                     <th className="px-3 py-2">Gözetim Tarihi</th>
                     <th className="px-3 py-2">Konaklama Ödeme</th>
-                    <th className="px-3 py-2">Ulasim Masrafı</th>
+                    <th className="px-3 py-2">Ulaşım Masrafı</th>
                     <th className="px-3 py-2">Öğle Yemeği</th>
                     <th className="px-3 py-2">Akşam Yemeği</th>
-                    <th className="px-3 py-2">Firma Masrafı</th>
+                    <th className="px-3 py-2">Diğer</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {entryViews.map(({ entry, company, product, site, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
+                  {entryViews.map(({ entry, company, product, site, companyProduct, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
                     <tr key={entry.tripItemId} className="align-top">
                       <td className="px-3 py-2 text-slate-700">
                         {company?.name ?? "-"}
                         {site ? ` / ${site.address ?? site.city}` : ""}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {companyProduct?.productCode ?? "-"}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
                         {site ? (site.district ? `${site.district} / ${site.city}` : site.city) : "-"}
@@ -646,7 +691,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "lodgingPaymentAmount", event.target.value)
                           }
-                          placeholder="?"
+                          placeholder="₺"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -658,7 +703,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "transportExpense", event.target.value)
                           }
-                          placeholder="?"
+                          placeholder="₺"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -670,7 +715,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "mealLunchExpense", event.target.value)
                           }
-                          placeholder="?"
+                          placeholder="₺"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -682,7 +727,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "mealDinnerExpense", event.target.value)
                           }
-                          placeholder="?"
+                          placeholder="₺"
                         />
                       </td>
                       <td className="px-3 py-2">
@@ -694,14 +739,14 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                           onChange={(event) =>
                             handleEntryChange(entry.tripItemId, "companyExpense", event.target.value)
                           }
-                          placeholder="?"
+                          placeholder="₺"
                         />
                       </td>
                     </tr>
                   ))}
                   {entryViews.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-3 py-4 text-center text-sm text-slate-500">
+                      <td colSpan={13} className="px-3 py-4 text-center text-sm text-slate-500">
                         Bu seyahat için ilişkilendirilmiş firma-ürün kaydı bulunmuyor.
                       </td>
                     </tr>
@@ -719,6 +764,21 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
 };
 
 export default TripCompletionModal;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

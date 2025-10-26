@@ -14,11 +14,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: "/", label: "Gösterge Paneli", icon: Home, roles: ["admin"] },
-  { path: "/bu-ay-vadesi", label: "Takip ve Planlama", icon: ClipboardList, roles: ["admin"] },
   { path: "/firma-urunleri", label: "Firma-Ürünler", icon: Layers, roles: ["admin"] },
+  { path: "/bu-ay-vadesi", label: "Takip ve Planlama", icon: ClipboardList, roles: ["admin"] },
   { path: "/seyahatler", label: "Seyahatler", icon: Truck, roles: ["admin"] },
-  { path: "/laboratuvar", label: "Laboratuvar", icon: FlaskConical, roles: ["admin", "lab"] },
   { path: "/numuneler", label: "Numuneler", icon: TestTube2, roles: ["admin"] },
+  { path: "/laboratuvar", label: "Laboratuvar", icon: FlaskConical, roles: ["admin", "lab"] },
   { path: "/ayarlar", label: "Kontrol", icon: Settings, roles: ["admin"] }
 ];
 

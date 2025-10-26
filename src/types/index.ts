@@ -100,6 +100,10 @@ export interface Trip {
   status: TripStatus;
   assigneeIds: number[];
   notes?: string;
+  plannedBy?: string;
+  transportMode?: TransportMode;
+  vehiclePlate?: string;
+  lodgingProvider?: LodgingProvider;
   dutyAssignments: Record<number, TripDutyAssignment>;
 }
 

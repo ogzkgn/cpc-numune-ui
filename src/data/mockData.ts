@@ -13,10 +13,10 @@
 
 export const companies: Company[] = [
   { id: 1, name: "Anadolu Hazır Beton", customerCode: "BT-001" },
-  { id: 2, name: "Marmara Çimento", customerCode: "BT-214" },
+  { id: 2, name: "Marmara Çimento", customerCode: "-" },
   { id: 3, name: "Ege Yapı Kimya", customerCode: "BT-448" },
   { id: 4, name: "Karadeniz Endüstri", customerCode: "BT-102" },
-  { id: 5, name: "Toros Madencilik", customerCode: "BT-331" }
+  { id: 5, name: "Toros Madencilik", customerCode: "-" }
 ];
 
 export const sites: Site[] = [
@@ -144,31 +144,7 @@ export const employees: Employee[] = [
 ];
 
 export const trips: Trip[] = [
-  {
-    id: 1,
-    name: "Marmara Hazırlık",
-    plannedAt: "2025-09-29T09:00:00",
-    status: "ACTIVE",
-    assigneeIds: [1, 4],
-    notes: "Öncelik beton numuneleri",
-    dutyAssignments: {
-      1: { dutyType: "NUMUNE", dutyAssigneeIds: [1, 4] },
-      2: { dutyType: "GÖZETİM", dutyAssigneeIds: [4] },
-      3: { dutyType: "NUMUNE", dutyAssigneeIds: [1] }
-    }
-  },
-  {
-    id: 2,
-    name: "Ege Kontrol",
-    plannedAt: "2025-10-02T13:30:00",
-    status: "PLANNED",
-    assigneeIds: [3],
-    notes: "Cüruf ve uçucu kül kontrolü",
-    dutyAssignments: {
-      5: { dutyType: "BOTH", dutyAssigneeIds: [3] },
-      7: { dutyType: "NUMUNE", dutyAssigneeIds: [3] }
-    }
-  }
+  
 ];
 
 export const tripItems: TripItem[] = [
