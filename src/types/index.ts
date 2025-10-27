@@ -23,7 +23,8 @@ export interface Product {
   standardNo?: string;
 }
 
-export type CompanyProductStatus = "active" | "archived";
+export type CompanyProductStatus = "devam" | "iptal" | "aski" | "kesikli";
+export type PaymentStatus = "yapti" | "yapmadi" | "muaf";
 
 export interface CompanyProduct {
   id: number;
@@ -36,6 +37,7 @@ export interface CompanyProduct {
   lastSampleDate?: string;
   lastInspectionDate?: string;
   status?: CompanyProductStatus;
+  paymentStatus?: PaymentStatus;
 }
 
 export interface Lab {
@@ -116,6 +118,7 @@ export interface LabShipmentDetails {
   sealNo: string;
   foreignMatter: string;
   weight: string;
+  cpcNote?: string;
 }
 
 export interface TripItem {

@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from "react";
-import { Archive, ArchiveRestore, Edit3 } from "lucide-react";
+import { Edit3 } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -9,8 +9,9 @@ import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { buildAnnualSampleCounts, getRequiredSampleCount } from "../../utils/samples";
+import { paymentStatusLabels, paymentStatusTokens } from "../../utils/labels";
 import type { TableColumn } from "../../components/ui/Table";
-import type { CompanyProduct } from "../../types";
+import type { CompanyProduct, CompanyProductStatus, PaymentStatus } from "../../types";
 
 const CompanyProductList = () => {
   const companyProducts = useAppStore((state) => state.companyProducts);
@@ -18,7 +19,8 @@ const CompanyProductList = () => {
   const sites = useAppStore((state) => state.sites);
   const products = useAppStore((state) => state.products);
   const updateCompanyProduct = useAppStore((state) => state.updateCompanyProduct);
-  const setCompanyProductArchived = useAppStore((state) => state.setCompanyProductArchived);
+  const setCompanyProductStatus = useAppStore((state) => state.setCompanyProductStatus);
+  const addCompanyProduct = useAppStore((state) => state.addCompanyProduct);
   const addToast = useAppStore((state) => state.addToast);
   const tripItems = useAppStore((state) => state.tripItems);
   const tripCompletions = useAppStore((state) => state.tripCompletions);
@@ -33,6 +35,7 @@ const CompanyProductList = () => {
     certificateNo: string;
     certificateDate: string;
     lastSampleDate: string;
+    paymentStatus: PaymentStatus | "";
   };
 
   const emptyEditorState: EditorState = {
@@ -42,13 +45,15 @@ const CompanyProductList = () => {
     productCode: "",
     certificateNo: "",
     certificateDate: "",
-    lastSampleDate: ""
+    lastSampleDate: "",
+    paymentStatus: "yapmadi"
   };
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selected, setSelected] = useState<CompanyProduct | null>(null);
   const [editorState, setEditorState] = useState<EditorState>(emptyEditorState);
   const [modalOpen, setModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const filtered = useMemo(() => {
     if (!searchTerm) return companyProducts;
@@ -83,6 +88,27 @@ const CompanyProductList = () => {
     () => buildAnnualSampleCounts(tripItems, tripCompletions, currentYear),
     [tripItems, tripCompletions, currentYear]
   );
+
+  const statusLabels: Record<CompanyProductStatus, string> = {
+    devam: "Devam",
+    kesikli: "Kesikli",
+    aski: "Askı",
+    iptal: "İptal"
+  };
+
+  const statusClassMap: Record<CompanyProductStatus, string> = {
+    devam: "bg-green-100 text-green-700",
+    kesikli: "bg-amber-100 text-amber-700",
+    aski: "bg-slate-200 text-slate-700",
+    iptal: "bg-red-100 text-red-700"
+  };
+
+  const handleStatusChange = (companyProduct: CompanyProduct, status: CompanyProductStatus) => {
+    if (companyProduct.status === status) return;
+
+    setCompanyProductStatus(companyProduct.id, status);
+    addToast({ title: "Firma-ürün durumu güncellendi", variant: "success" });
+  };
 
   const columns: TableColumn<CompanyProduct>[] = [
     {
@@ -126,6 +152,18 @@ const CompanyProductList = () => {
       }
     },
     {
+      id: "paymentStatus",
+      header: "Ödeme Durumu",
+      cell: (row) => {
+        const status = row.paymentStatus;
+        if (!status) return "-";
+        const label = paymentStatusLabels[status];
+        const token = paymentStatusTokens[status];
+        if (!label || !token) return label ?? "-";
+        return <Badge className={token}>{label}</Badge>;
+      }
+    },
+    {
       id: "certificateDate",
       header: "Belge Tarihi",
       cell: (row) => formatDate(row.certificateDate)
@@ -143,40 +181,39 @@ const CompanyProductList = () => {
     {
       id: "status",
       header: "Durum",
-      cell: (row) => (
-        <Badge variant={row.status === "archived" ? "danger" : "success"}>
-          {row.status === "archived" ? "İptal" : "Devam"}
-        </Badge>
-      )
+      cell: (row) => {
+        const product = productMap.get(row.productId);
+        const currentStatus = (row.status ?? "devam") as CompanyProductStatus;
+        const options = product?.productType === "concrete" ? ["devam", "iptal"] : ["devam", "kesikli", "aski", "iptal"];
+
+        return (
+          <select
+            value={currentStatus}
+            onChange={(event) => handleStatusChange(row, event.target.value as CompanyProductStatus)}
+            className={`rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold ${statusClassMap[currentStatus]}`}
+          >
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {statusLabels[option as CompanyProductStatus]}
+              </option>
+            ))}
+          </select>
+        );
+      }
     },
     {
       id: "actions",
       header: "İşlemler",
       cell: (row) => (
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" icon={<Edit3 className="h-4 w-4" />} onClick={() => openEditor(row)}>
-            
-          </Button>
-          {row.status === "archived" ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<ArchiveRestore className="h-4 w-4" />}
-              onClick={() => toggleArchive(row, false)}
-            >
-              
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" icon={<Archive className="h-4 w-4" />} onClick={() => toggleArchive(row, true)}>
-              
-            </Button>
-          )}
-        </div>
+        <Button size="sm" variant="ghost" icon={<Edit3 className="h-4 w-4" />} onClick={() => openEditor(row)}>
+          
+        </Button>
       )
     }
   ];
 
   const openEditor = (cp: CompanyProduct) => {
+    setIsCreating(false);
     setSelected(cp);
     setEditorState({
       companyId: cp.companyId ? String(cp.companyId) : "",
@@ -185,15 +222,19 @@ const CompanyProductList = () => {
       productCode: cp.productCode ?? "",
       certificateNo: cp.certificateNo ?? "",
       certificateDate: cp.certificateDate ? cp.certificateDate.slice(0, 10) : "",
-      lastSampleDate: cp.lastSampleDate ? cp.lastSampleDate.slice(0, 10) : ""
+      lastSampleDate: cp.lastSampleDate ? cp.lastSampleDate.slice(0, 10) : "",
+      paymentStatus: (cp.paymentStatus ?? "yapmadi") as PaymentStatus
     });
     setModalOpen(true);
   };
 
-  const toggleArchive = (cp: CompanyProduct, archived: boolean) => {
-    setCompanyProductArchived(cp.id, archived);
-    addToast({ title: archived ? "Kayit arsive alindi" : "Kayit aktiflesti", variant: "info" });
+  const openNewRecord = () => {
+    setIsCreating(true);
+    setSelected(null);
+    setEditorState(emptyEditorState);
+    setModalOpen(true);
   };
+
 
   const updateEditorField = (field: keyof EditorState, value: string) => {
     setEditorState((prev) => {
@@ -209,27 +250,46 @@ const CompanyProductList = () => {
     setModalOpen(false);
     setSelected(null);
     setEditorState(emptyEditorState);
+    setIsCreating(false);
   };
 
   const saveEdits = () => {
-    if (!selected) return;
+    const companyId = editorState.companyId ? Number(editorState.companyId) : selected?.companyId;
+    const productId = editorState.productId ? Number(editorState.productId) : selected?.productId;
+    const siteId = editorState.siteId ? Number(editorState.siteId) : selected?.siteId;
+    const paymentStatus = editorState.paymentStatus || undefined;
 
-    const companyId = editorState.companyId ? Number(editorState.companyId) : selected.companyId;
-    const productId = editorState.productId ? Number(editorState.productId) : selected.productId;
-    const siteId = editorState.siteId ? Number(editorState.siteId) : undefined;
+    if (!companyId || !productId) {
+      addToast({
+        title: "Zorunlu alanlar eksik",
+        description: "Firma ve Ürün seçimleri yapılmalıdır.",
+        variant: "error"
+      });
+      return;
+    }
 
-    updateCompanyProduct({
-      id: selected.id,
+    const payload = {
       companyId,
       productId,
       siteId,
       productCode: editorState.productCode || undefined,
       certificateNo: editorState.certificateNo || undefined,
       certificateDate: editorState.certificateDate || undefined,
-      lastSampleDate: editorState.lastSampleDate || undefined
-    });
+      lastSampleDate: editorState.lastSampleDate || undefined,
+      paymentStatus: paymentStatus as PaymentStatus | undefined
+    };
 
-    addToast({ title: "Firma-Urun kaydi guncellendi", variant: "success" });
+    if (isCreating) {
+      addCompanyProduct(payload);
+      addToast({ title: "Firma-Ürün kaydı oluşturuldu", variant: "success" });
+    } else if (selected) {
+      updateCompanyProduct({
+        id: selected.id,
+        ...payload
+      });
+      addToast({ title: "Firma-ürün kaydı güncellendi", variant: "success" });
+    }
+
     closeModal();
   };
 
@@ -254,7 +314,7 @@ const CompanyProductList = () => {
           <h1 className="text-2xl font-semibold text-slate-900">Firma-Ürünler</h1>
           <p className="text-sm text-slate-500">Numune planlamasında kullanılan firma ve ürün eşleşmeleri</p>
         </div>
-        <Button variant="ghost" onClick={() => addToast({ title: "Yeni kayıt formu prototipte öngörülüyor", variant: "info" })}>
+        <Button variant="ghost" onClick={openNewRecord}>
           Yeni Kayıt
         </Button>
       </div>
@@ -279,13 +339,13 @@ const CompanyProductList = () => {
             <Button variant="ghost" onClick={closeModal}>
               Vazgeç
             </Button>
-            <Button onClick={saveEdits} disabled={!selected}>
+            <Button onClick={saveEdits} disabled={!isCreating && !selected}>
               Kaydet
             </Button>
           </div>
         }
       >
-        {selected ? (
+        {(selected || isCreating) ? (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Firma
@@ -340,7 +400,7 @@ const CompanyProductList = () => {
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 value={editorState.productCode}
                 onChange={(event) => updateEditorField("productCode", event.target.value)}
-                placeholder="Örn. CPC-2230.Ç4"
+                placeholder="örn. CPC-2230.Ş4"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
@@ -390,3 +450,16 @@ const CompanyProductList = () => {
 };
 
 export default CompanyProductList;
+
+
+
+
+
+
+
+
+
+
+
+
+

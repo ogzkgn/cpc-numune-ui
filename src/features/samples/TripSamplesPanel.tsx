@@ -40,7 +40,8 @@ const TripSamplesPanel = () => {
     storage: "",
     sealNo: "",
     foreignMatter: "Yok",
-    weight: ""
+    weight: "",
+    cpcNote: ""
   });
 
   const companyProductMap = useMemo(() => new Map(companyProducts.map((cp) => [cp.id, cp])), [companyProducts]);
@@ -325,6 +326,15 @@ const TripSamplesPanel = () => {
               value={labForm.weight}
               onChange={(event) => setLabForm((prev) => ({ ...prev, weight: event.target.value }))}
               placeholder="Örn. 500"
+            />
+          </label>
+          <label className="md:col-span-2 flex flex-col gap-1 text-sm font-medium text-slate-700">
+            CPC Notu
+            <textarea
+              className="min-h-[96px] rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={labForm.cpcNote ?? ""}
+              onChange={(event) => setLabForm((prev) => ({ ...prev, cpcNote: event.target.value }))}
+              placeholder="Laboratuvara iletilecek notu yazın"
             />
           </label>
         </div>

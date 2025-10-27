@@ -1,4 +1,4 @@
-import type { ProductType, TripStatus, TripItemLabStatus, EmployeeStatus } from "../types";
+import type { ProductType, TripStatus, TripItemLabStatus, EmployeeStatus, PaymentStatus } from "../types";
 
 export const productTypeLabels: Record<ProductType, string> = {
   concrete: "Beton",
@@ -56,3 +56,14 @@ export const employeeStatusTokens: Record<EmployeeStatus, string> = {
   busy: "bg-slate-200 text-slate-700"
 };
 
+export const paymentStatusLabels: Record<PaymentStatus, string> = {
+  yapti: "Yaptı",
+  yapmadi: "Yapmadı",
+  muaf: "Muaf"
+};
+
+export const paymentStatusTokens: Record<PaymentStatus, string> = {
+  yapti: "bg-green-100 text-green-700",
+  yapmadi: "bg-red-100 text-red-700",
+  muaf: "bg-slate-200 text-slate-700"
+};

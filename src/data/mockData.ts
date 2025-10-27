@@ -47,7 +47,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2023-11-10",
     lastSampleDate: "2025-07-12",
     lastInspectionDate: "2025-04-15",
-    status: "active"
+    status: "devam",
+    paymentStatus: "yapti"
   },
   {
     id: 2,
@@ -59,7 +60,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2024-02-22",
     lastSampleDate: "2025-05-03",
     lastInspectionDate: "2025-01-05",
-    status: "active"
+    status: "devam",
+    paymentStatus: "yapmadi"
   },
   {
     id: 3,
@@ -71,7 +73,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2023-09-18",
     lastSampleDate: "2025-03-14",
     lastInspectionDate: "2025-02-10",
-    status: "active"
+    status: "devam",
+    paymentStatus: "yapti"
   },
   {
     id: 4,
@@ -83,7 +86,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2024-04-01",
     lastSampleDate: "2025-01-25",
     lastInspectionDate: "2024-12-20",
-    status: "active"
+    status: "devam",
+    paymentStatus: "muaf"
   },
   {
     id: 5,
@@ -95,7 +99,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2024-05-30",
     lastSampleDate: "2024-12-19",
     lastInspectionDate: "2024-08-11",
-    status: "active"
+    status: "devam",
+    paymentStatus: "yapti"
   },
   {
     id: 6,
@@ -107,7 +112,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2023-06-11",
     lastSampleDate: "2025-11-01",
     lastInspectionDate: "2025-01-30",
-    status: "active"
+    status: "devam",
+    paymentStatus: "yapmadi"
   },
   {
     id: 7,
@@ -118,7 +124,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2024-10-03",
     lastSampleDate: "2025-02-07",
     lastInspectionDate: "2024-09-18",
-    status: "active"
+    status: "devam",
+    paymentStatus: "muaf"
   },
   {
     id: 8,
@@ -130,7 +137,8 @@ export const companyProducts: CompanyProduct[] = [
     certificateDate: "2025-01-19",
     lastSampleDate: "2025-07-29",
     lastInspectionDate: "2025-02-01",
-    status: "active"
+    status: "devam",
+    paymentStatus: "yapti"
   }
 ];
 

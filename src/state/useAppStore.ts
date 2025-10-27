@@ -15,6 +15,7 @@ import { generateLabEntryCode } from "../utils/samples";
 import type {
   Company,
   CompanyProduct,
+  CompanyProductStatus,
   ConfigurableCycle,
   Employee,
   Lab,
@@ -32,6 +33,7 @@ import type {
   TripDutyType,
   TripItem,
   TripItemLabStatus,
+  PaymentStatus,
   TripStatus
 } from "../types";
 
@@ -64,6 +66,19 @@ type CreateTripInput = {
 
 type UpdateCompanyProductInput = Partial<Omit<CompanyProduct, "id">> & {
   id: number;
+};
+
+type CreateCompanyProductInput = {
+  companyId: number;
+  productId: number;
+  siteId?: number;
+  productCode?: string;
+  certificateNo?: string;
+  certificateDate?: string;
+  lastSampleDate?: string;
+  lastInspectionDate?: string;
+  status?: CompanyProductStatus;
+  paymentStatus?: PaymentStatus;
 };
 
 type UpsertLabFormInput = {
@@ -107,6 +122,7 @@ interface AppState {
   updateTripStatus: (tripId: number, status: TripStatus) => void;
   updateTrip: (tripId: number, changes: Partial<Pick<Trip, "name" | "plannedAt" | "notes">>) => void;
   markSampleTaken: (inputs: SampleTakenInput[]) => void;
+  addCompanyProduct: (input: CreateCompanyProductInput) => void;
   updateTripItemLabStatus: (
     tripItemId: number,
     status: TripItemLabStatus,
@@ -114,7 +130,7 @@ interface AppState {
   ) => void;
   upsertLabForm: (input: UpsertLabFormInput) => void;
   updateCompanyProduct: (input: UpdateCompanyProductInput) => void;
-  setCompanyProductArchived: (companyProductId: number, archived: boolean) => void;
+  setCompanyProductStatus: (companyProductId: number, status: CompanyProduct["status"]) => void;
   setSamplingCycle: (productType: ConfigurableCycle["productType"], months: number) => void;
   completeTrip: (input: CompleteTripInput) => void;
 }
@@ -341,6 +357,29 @@ export const useAppStore = create<AppState>((set) => ({
     });
   },
 
+  addCompanyProduct: (input) => {
+    set((state) => {
+      const id = generateId();
+      const newProduct: CompanyProduct = {
+        id,
+        companyId: input.companyId,
+        productId: input.productId,
+        siteId: input.siteId,
+        productCode: input.productCode,
+        certificateNo: input.certificateNo,
+        certificateDate: input.certificateDate,
+        lastSampleDate: input.lastSampleDate,
+        lastInspectionDate: input.lastInspectionDate,
+        status: input.status ?? "devam",
+        paymentStatus: input.paymentStatus
+      };
+
+      return {
+        companyProducts: [...state.companyProducts, newProduct]
+      };
+    });
+  },
+
   updateTripItemLabStatus: (tripItemId, status, options) => {
     set((state) => ({
       tripItems: state.tripItems.map((item) =>
@@ -389,7 +428,10 @@ export const useAppStore = create<AppState>((set) => ({
                   status,
                   updatedAt: timestamp,
                   ...(labNotes !== undefined ? { labNotes } : {}),
-                  ...(cpcNotes !== undefined ? { cpcNotes } : {})
+                  ...(cpcNotes !== undefined ? { cpcNotes } : {}),
+                  ...(documents !== undefined
+                    ? { documents: documents.map((doc) => ({ ...doc })) }
+                    : {})
                 }
               : form
           )
@@ -403,7 +445,10 @@ export const useAppStore = create<AppState>((set) => ({
               status,
               updatedAt: timestamp,
               ...(labNotes !== undefined ? { labNotes } : {}),
-              ...(cpcNotes !== undefined ? { cpcNotes } : {})
+              ...(cpcNotes !== undefined ? { cpcNotes } : {}),
+              ...(documents !== undefined
+                ? { documents: documents.map((doc) => ({ ...doc })) }
+                : {})
             }
           ];
 
@@ -436,13 +481,13 @@ export const useAppStore = create<AppState>((set) => ({
     }));
   },
 
-  setCompanyProductArchived: (companyProductId, archived) => {
+  setCompanyProductStatus: (companyProductId, status) => {
     set((state) => ({
       companyProducts: state.companyProducts.map((cp) =>
         cp.id === companyProductId
           ? {
               ...cp,
-              status: archived ? "archived" : "active"
+              status
             }
           : cp
       )

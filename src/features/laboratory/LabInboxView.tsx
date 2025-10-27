@@ -147,7 +147,7 @@ const LabInboxView = () => {
 
   const formData = (selectedForm?.data ?? FALLBACK_DATA) as Record<string, unknown>;
   const labNote = selectedForm?.labNotes ?? null;
-  const cpcNote = selectedForm?.cpcNotes ?? null;
+  const cpcNote = selectedForm?.cpcNotes ?? shipmentDetails?.cpcNote ?? null;
   const displayedCpcNote = isEditingRevision ? revisionNote : cpcNote;
 
   const toInputValue = (value: unknown) => {

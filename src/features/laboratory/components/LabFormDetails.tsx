@@ -74,6 +74,17 @@ const LabFormDetails = ({
 
   return (
     <div className={containerClassName}>
+      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+        CPC Notu
+        <textarea
+          className="min-h-[96px] rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          value={cpcNote}
+          onChange={onCpcNoteChange ? (event) => onCpcNoteChange(event.target.value) : undefined}
+          disabled={cpcNoteDisabled}
+          placeholder={cpcNotePlaceholder}
+        />
+      </label>
+
       {fieldConfig.map((field) => (
         <label key={field.key} className="flex flex-col gap-1 text-sm font-medium text-slate-700">
           {field.label}
@@ -164,16 +175,6 @@ const LabFormDetails = ({
           onChange={onLabNoteChange ? (event) => onLabNoteChange(event.target.value) : undefined}
           disabled={labNoteDisabled}
           placeholder={labNotePlaceholder}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        CPC Notu
-        <textarea
-          className="min-h-[96px] rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          value={cpcNote}
-          onChange={onCpcNoteChange ? (event) => onCpcNoteChange(event.target.value) : undefined}
-          disabled={cpcNoteDisabled}
-          placeholder={cpcNotePlaceholder}
         />
       </label>
     </div>

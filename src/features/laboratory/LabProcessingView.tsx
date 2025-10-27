@@ -129,7 +129,7 @@ const LabProcessingView = () => {
         labSentAt: item.labSentAt ?? item.sampledAt,
         labFormData: form?.data,
         labNotes: form?.labNotes,
-        cpcNotes: form?.cpcNotes,
+        cpcNotes: form?.cpcNotes ?? item.labShipmentDetails?.cpcNote,
         documents: form?.documents ?? [],
         companyProductId: companyProduct.id
       });
@@ -200,7 +200,8 @@ const LabProcessingView = () => {
         const baseDate = row.labSentAt ?? row.item.sampledAt;
         if (!baseDate) return "-";
         const date = new Date(baseDate);
-        date.setDate(date.getDate() + 30);
+        const additionalDays = row.productType === "fly_ash" ? 90 : 28;
+        date.setDate(date.getDate() + additionalDays);
         return formatDate(date.toISOString());
       }
     },

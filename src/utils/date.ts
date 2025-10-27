@@ -9,7 +9,7 @@ import {
 } from "date-fns";
 import { tr } from "date-fns/locale";
 
-import type { CompanyProduct, Product, ProductType } from "../types";
+import type { CompanyProduct, CompanyProductStatus, Product, ProductType } from "../types";
 
 const SAMPLING_INTERVAL_MONTHS: Record<ProductType, number> = {
   concrete: 4,
@@ -32,6 +32,19 @@ const OVERDUE_THRESHOLD: Record<ProductType, number> = {
   fly_ash: 2
 };
 
+export const getSamplingIntervalMonths = (productType: ProductType, status: CompanyProductStatus = "devam") => {
+  if (status === "iptal" || status === "aski") {
+    return undefined;
+  }
+
+  const baseInterval = SAMPLING_INTERVAL_MONTHS[productType] ?? 3;
+  if (status === "kesikli") {
+    return baseInterval * 2;
+  }
+
+  return baseInterval;
+};
+
 export type PriorityFlag = "overdue" | "approaching" | "ok";
 
 export const formatDate = (value?: string | null, fallback = "-", options?: Intl.DateTimeFormatOptions) => {
@@ -47,7 +60,9 @@ export const toISODate = (date: Date) => format(date, "yyyy-MM-dd");
 export const calculateNextDueDate = (companyProduct: CompanyProduct, product: Product) => {
   const last = companyProduct.lastSampleDate ? parseISO(companyProduct.lastSampleDate) : undefined;
   if (!last) return undefined;
-  const months = SAMPLING_INTERVAL_MONTHS[product.productType] ?? 3;
+  const status = (companyProduct.status ?? "devam") as CompanyProductStatus;
+  const months = getSamplingIntervalMonths(product.productType, status);
+  if (!months) return undefined;
   return addMonths(last, months);
 };
 
@@ -59,19 +74,22 @@ export const calculateNextInspectionDueDate = (companyProduct: CompanyProduct) =
 
 export const getPriorityFlag = (companyProduct: CompanyProduct, product: Product): PriorityFlag => {
   if (!companyProduct.lastSampleDate) return "ok";
+
+  const status = (companyProduct.status ?? "devam") as CompanyProductStatus;
+  const interval = getSamplingIntervalMonths(product.productType, status);
+  if (!interval) {
+    return "ok";
+  }
+
   const lastSampleMonth = startOfMonth(parseISO(companyProduct.lastSampleDate));
   const today = new Date();
-
   const monthsSinceLast = differenceInCalendarMonths(startOfMonth(today), lastSampleMonth);
-  const productType = product.productType;
 
-  const overdueThreshold = OVERDUE_THRESHOLD[productType] ?? 0;
-  if (monthsSinceLast >= overdueThreshold) {
+  if (monthsSinceLast >= interval) {
     return "overdue";
   }
 
-  const approachingThreshold = APPROACHING_THRESHOLD[productType] ?? 0;
-  if (monthsSinceLast === approachingThreshold) {
+  if (monthsSinceLast >= Math.max(interval - 1, 0)) {
     return "approaching";
   }
 

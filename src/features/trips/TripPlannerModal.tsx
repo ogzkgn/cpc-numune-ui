@@ -8,7 +8,7 @@ import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
-import { hasSkillCoverage, isEmployeeAvailable } from "../../utils/validation";
+import { hasSkillCoverage } from "../../utils/validation";
 import { employeeStatusLabels, employeeStatusTokens, productTypeLabels } from "../../utils/labels";
 import type { LodgingProvider, ProductType, TransportMode, TripDutyType } from "../../types";
 
@@ -418,16 +418,14 @@ const TripPlannerModal = () => {
             <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
               {employees.map((employee) => {
                 const selected = selectedAssigneeIds.includes(employee.id);
-                const disabled = !isEmployeeAvailable(employee);
                 return (
                   <button
                     key={employee.id}
                     type="button"
-                    onClick={() => (!disabled ? handleToggleAssignee(employee.id) : undefined)}
+                    onClick={() => handleToggleAssignee(employee.id)}
                     className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition ${
-                      selected ? "border-brand-primary bg-brand-primary/5" : "border-slate-200"
-                    } ${disabled ? "opacity-60" : "hover:border-brand-primary"}`}
-                    disabled={disabled}
+                      selected ? "border-brand-primary bg-brand-primary/5" : "border-slate-200 hover:border-brand-primary"
+                    }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -677,5 +675,3 @@ const TripPlannerModal = () => {
 };
 
 export default TripPlannerModal;
-
-

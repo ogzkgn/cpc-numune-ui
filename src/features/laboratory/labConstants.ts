@@ -5,6 +5,10 @@ export const DEFAULT_PRODUCT_TYPE: ProductType = "concrete";
 
 export type LabFieldConfig = { label: string; key: string; isDate?: boolean };
 
+const BASE_FIELD_CONFIG: LabFieldConfig[] = [
+  { label: "Test Başlangıç Tarihi", key: "testStartDate", isDate: true }
+];
+
 const FIELD_LABELS_BY_PRODUCT: Partial<Record<ProductType, LabFieldConfig[]>> = {
   cement: [
     { label: "Erken dayanım (2 gün) - MPa", key: "cementEarlyStrength2d" },
@@ -71,6 +75,7 @@ const FIELD_LABELS_BY_STANDARD: Record<string, LabFieldConfig[]> = {
 };
 
 export const FALLBACK_DATA: Record<string, unknown> = {
+  testStartDate: "",
   concreteDay7: "",
   concreteDay28: "",
   concreteDurabilityRemarks: "",
@@ -131,14 +136,14 @@ export const getFieldConfig = (options: FieldConfigOptions = {}): LabFieldConfig
   const { productType, standardNo } = options;
 
   if (productType && FIELD_LABELS_BY_PRODUCT[productType]) {
-    return FIELD_LABELS_BY_PRODUCT[productType]!;
+    return [...BASE_FIELD_CONFIG, ...FIELD_LABELS_BY_PRODUCT[productType]!];
   }
 
   if (standardNo && FIELD_LABELS_BY_STANDARD[standardNo]) {
-    return FIELD_LABELS_BY_STANDARD[standardNo];
+    return [...BASE_FIELD_CONFIG, ...FIELD_LABELS_BY_STANDARD[standardNo]];
   }
 
-  return FIELD_LABELS_BY_STANDARD[DEFAULT_STANDARD] ?? [];
+  return [...BASE_FIELD_CONFIG, ...(FIELD_LABELS_BY_STANDARD[DEFAULT_STANDARD] ?? [])];
 };
 
 export const SHIPMENT_FIELDS: { key: keyof LabShipmentDetails; label: string; isDate?: boolean }[] = [
@@ -147,5 +152,6 @@ export const SHIPMENT_FIELDS: { key: keyof LabShipmentDetails; label: string; is
   { key: "storage", label: "Silo / Depo No" },
   { key: "sealNo", label: "Mühür No" },
   { key: "foreignMatter", label: "Yabancı Madde" },
-  { key: "weight", label: "Numune Ağırlığı (kg)" }
+  { key: "weight", label: "Numune Ağırlığı (kg)" },
+  { key: "cpcNote", label: "CPC Notu" }
 ];

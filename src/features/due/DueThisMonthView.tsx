@@ -10,9 +10,9 @@ import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate, calculateNextDueDate, getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
-import { productTypeLabels } from "../../utils/labels";
+import { productTypeLabels, paymentStatusLabels, paymentStatusTokens } from "../../utils/labels";
 import { buildAnnualSampleCounts, getRequiredSampleCount } from "../../utils/samples";
-import type { ProductType } from "../../types";
+import type { CompanyProductStatus, ProductType, PaymentStatus } from "../../types";
 import type { TableColumn } from "../../components/ui/Table";
 import type { PriorityFlag } from "../../utils/date";
 
@@ -24,10 +24,15 @@ interface Filters {
   standardNo?: string;
   customerCode?: string;
   priority?: PriorityKey;
+  companyName?: string;
+  productCode?: string;
+  productName?: string;
+  paymentStatuses: PaymentStatus[];
 }
 
 const defaultFilters: Filters = {
-  productTypes: []
+  productTypes: [],
+  paymentStatuses: []
 };
 
 const priorityLabel: Record<PriorityKey, string> = {
@@ -67,13 +72,17 @@ const DueThisMonthView = () => {
         if (!product || !company) return null;
 
         const sampleCount = sampleCounts.get(cp.id) ?? 0;
-        const sampleQuota = getRequiredSampleCount(product.productType);
+        const status = (cp.status ?? "devam") as CompanyProductStatus;
+        if (status === "iptal" || status === "aski") return null;
+        const sampleQuota = getRequiredSampleCount(product.productType, status);
         const nextDue = calculateNextDueDate(cp, product);
         const priority = getPriorityFlag(cp, product);
         const inspectionPriority = getInspectionPriorityFlag(cp);
         const score =
           (priority === "overdue" ? 3 : priority === "approaching" ? 1 : 0) +
           (inspectionPriority === "overdue" ? 3 : inspectionPriority === "approaching" ? 1 : 0);
+
+        const paymentStatus = (cp.paymentStatus ?? "yapmadi") as PaymentStatus;
 
         return {
           cp,
@@ -85,12 +94,13 @@ const DueThisMonthView = () => {
           score,
           nextDue,
           sampleCount,
-          sampleQuota
+          sampleQuota,
+          paymentStatus
         } as const;
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .filter((item) => {
-        const { product, company, site, priority } = item;
+        const { product, company, site, priority, paymentStatus } = item;
 
         if (filters.productTypes.length > 0 && !filters.productTypes.includes(product.productType)) {
           return false;
@@ -112,6 +122,31 @@ const DueThisMonthView = () => {
         }
 
         if (filters.priority && priority !== filters.priority) {
+          return false;
+        }
+
+        if (
+          filters.companyName &&
+          !company.name.toLowerCase().includes(filters.companyName.toLowerCase())
+        ) {
+          return false;
+        }
+
+        if (
+          filters.productCode &&
+          !(item.cp.productCode ?? "-").toLowerCase().includes(filters.productCode.toLowerCase())
+        ) {
+          return false;
+        }
+
+        if (
+          filters.productName &&
+          !product.name.toLowerCase().includes(filters.productName.toLowerCase())
+        ) {
+          return false;
+        }
+
+        if (filters.paymentStatuses.length > 0 && !filters.paymentStatuses.includes(paymentStatus)) {
           return false;
         }
 
@@ -137,6 +172,28 @@ const DueThisMonthView = () => {
       const product = productMap.get(cp.productId);
       if (product?.standardNo) {
         values.add(product.standardNo);
+      }
+    });
+    return Array.from(values);
+  }, [companyProducts, productMap]);
+
+  const uniqueCompanies = useMemo(() => {
+    const values = new Set<string>();
+    companyProducts.forEach((cp) => {
+      const company = companyMap.get(cp.companyId);
+      if (company?.name) {
+        values.add(company.name);
+      }
+    });
+    return Array.from(values);
+  }, [companyProducts, companyMap]);
+
+  const uniqueProductNames = useMemo(() => {
+    const values = new Set<string>();
+    companyProducts.forEach((cp) => {
+      const product = productMap.get(cp.productId);
+      if (product?.name) {
+        values.add(product.name);
       }
     });
     return Array.from(values);
@@ -206,8 +263,18 @@ const DueThisMonthView = () => {
       cell: (item) => `${item.sampleCount}/${item.sampleQuota}`
     },
     {
+      id: "paymentStatus",
+      header: "Ödeme Durumu",
+      cell: (item) => {
+        const status = item.paymentStatus;
+        const label = paymentStatusLabels[status];
+        const token = paymentStatusTokens[status];
+        return <Badge className={token}>{label}</Badge>;
+      }
+    },
+    {
       id: "dueMonth",
-      header: "Numune Vade",
+      header: "Numune Vadesi",
       cell: (item) => (item.nextDue ? formatDate(item.nextDue.toISOString(), "-", { month: "long" }) : "-")
     },
     {
@@ -254,7 +321,7 @@ const DueThisMonthView = () => {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Vade Takibi ve Planlama</h1>
           <p className="text-sm text-slate-500">
-            Vadesi yaklaşan ve geciken firma-ürün takip ve planlama ekranı
+                        Vadesi yaklaşan ve geciken firma-ürün takip ve planlama ekranı
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -300,6 +367,33 @@ const DueThisMonthView = () => {
         {filters.customerCode ? (
           <Chip onRemove={() => setFilters((prev) => ({ ...prev, customerCode: undefined }))}>
             {filters.customerCode}
+          </Chip>
+        ) : null}
+        {filters.companyName ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, companyName: undefined }))}>
+            {filters.companyName}
+          </Chip>
+        ) : null}
+        {filters.productCode ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, productCode: undefined }))}>
+            {filters.productCode}
+          </Chip>
+        ) : null}
+        {filters.productName ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, productName: undefined }))}>
+            {filters.productName}
+          </Chip>
+        ) : null}
+        {filters.paymentStatuses.length > 0 ? (
+          <Chip
+            onRemove={() =>
+              setFilters((prev) => ({
+                ...prev,
+                paymentStatuses: []
+              }))
+            }
+          >
+            {filters.paymentStatuses.map((status) => paymentStatusLabels[status]).join(", ")}
           </Chip>
         ) : null}
       </div>
@@ -391,10 +485,10 @@ const DueThisMonthView = () => {
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Müşteri Kodu</h3>
+            <h3 className="text-sm font-semibold text-slate-700">BT Kodu</h3>
             <input
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Örn. AHB"
+              placeholder="BT-.."
               value={filters.customerCode ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -403,6 +497,89 @@ const DueThisMonthView = () => {
                 }))
               }
             />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Firma</h3>
+            <select
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.companyName ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  companyName: event.target.value || undefined
+                }))
+              }
+            >
+              <option value="">Hepsi</option>
+              {uniqueCompanies.map((company) => (
+                <option key={company} value={company}>
+                  {company}
+                </option>
+              ))}
+            </select>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün Kodu</h3>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün kodu ara"
+              value={filters.productCode ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  productCode: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün</h3>
+            <select
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.productName ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  productName: event.target.value || undefined
+                }))
+              }
+            >
+              <option value="">Hepsi</option>
+              {uniqueProductNames.map((product) => (
+                <option key={product} value={product}>
+                  {product}
+                </option>
+              ))}
+            </select>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ödeme Durumu</h3>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(paymentStatusLabels) as PaymentStatus[]).map((status) => {
+                const active = filters.paymentStatuses.includes(status);
+                return (
+                  <Chip
+                    key={status}
+                    active={active}
+                    className="cursor-pointer"
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        paymentStatuses: active
+                          ? prev.paymentStatuses.filter((value) => value !== status)
+                          : [...prev.paymentStatuses, status]
+                      }))
+                    }
+                  >
+                    {paymentStatusLabels[status]}
+                  </Chip>
+                );
+              })}
+            </div>
           </section>
 
           <section className="space-y-2">
@@ -442,4 +619,12 @@ const DueThisMonthView = () => {
 };
 
 export default DueThisMonthView;
+
+
+
+
+
+
+
+
 

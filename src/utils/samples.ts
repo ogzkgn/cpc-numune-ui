@@ -1,6 +1,6 @@
 ﻿import { parseISO } from "date-fns";
 
-import type { ProductType, TripCompletion, TripItem, TripDutyType } from "../types";
+import type { CompanyProductStatus, ProductType, TripCompletion, TripItem, TripDutyType } from "../types";
 
 const isSamplingDuty = (dutyType: TripDutyType | undefined) => dutyType === "NUMUNE" || dutyType === "BOTH";
 
@@ -31,8 +31,17 @@ export const buildAnnualSampleCounts = (
   return counts;
 };
 
-export const getRequiredSampleCount = (productType: ProductType) =>
-  productType === "concrete" ? 3 : 6;
+export const getRequiredSampleCount = (productType: ProductType, status: CompanyProductStatus = "devam") => {
+  if (status === "iptal" || status === "aski") {
+    return 0;
+  }
+
+  if (status === "kesikli") {
+    return 3;
+  }
+
+  return productType === "concrete" ? 3 : 6;
+};
 
 export const generateLabEntryCode = ({
   productCode,
