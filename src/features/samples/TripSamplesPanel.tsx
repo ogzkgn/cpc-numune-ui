@@ -28,6 +28,7 @@ const TripSamplesPanel = () => {
   const loadPendingSamples = useAppStore((state) => state.loadPendingSamples);
   const tripItems = useAppStore((state) => state.tripItems);
   const labs = useAppStore((state) => state.labs);
+  const loadLabs = useAppStore((state) => state.loadLabs);
   const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
   const addToast = useAppStore((state) => state.addToast);
 
@@ -44,7 +45,8 @@ const TripSamplesPanel = () => {
 
   useEffect(() => {
     loadPendingSamples();
-  }, [loadPendingSamples]);
+    loadLabs();
+  }, [loadPendingSamples, loadLabs]);
 
   const handleSendToLab = (row: SampleRow) => {
     setActiveRow(row);

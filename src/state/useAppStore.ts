@@ -1,16 +1,6 @@
 ﻿import { create } from "zustand";
 
-import {
-  companies as mockCompanies,
-  companyProducts as mockCompanyProducts,
-  companyProductRecords as mockCompanyProductRecords,
-  employees as mockEmployees,
-  labs as mockLabs,
-  sites as mockSites,
-  tripCompletions as mockTripCompletions,
-  tripItems as mockTripItems,
-  trips as mockTrips
-} from "../data/mockData";
+import { sites as mockSites } from "../data/mockData";
 import { generateLabEntryCode } from "../utils/samples";
 import type {
   Company,
@@ -169,6 +159,18 @@ const mapApiEmployee = (row: any): Employee => ({
   skills: Array.isArray(row.skills) ? row.skills : []
 });
 
+const mapApiLabForm = (row: any): LabForm => ({
+  id: Number(row.id),
+  tripItemId: Number(row.trip_item_id ?? row.tripItemId),
+  status: row.status,
+  standardNo: row.standard_no ?? row.standardNo,
+  data: row.data ?? {},
+  labNotes: row.lab_notes ?? row.labNotes,
+  cpcNotes: row.cpc_notes ?? row.cpcNotes,
+  documents: row.documents ?? undefined,
+  updatedAt: row.updated_at ?? row.updatedAt ?? undefined
+});
+
 const mapApiTrip = (row: any): Trip => ({
   id: row.id,
   name: row.name ?? undefined,
@@ -246,6 +248,11 @@ interface AppState {
   loadProducts: () => Promise<void>;
   loadTrips: () => Promise<void>;
   loadPendingSamples: () => Promise<void>;
+  loadLabItems: (status?: "processing" | "inbox") => Promise<void>;
+  loadLabs: () => Promise<void>;
+  addLab: (input: Omit<Lab, "id">) => Promise<void>;
+  updateLab: (id: number, changes: Omit<Lab, "id">) => Promise<void>;
+  deleteLab: (id: number) => Promise<void>;
   loadTripCompletion: (tripId: number) => Promise<void>;
   loadEmployees: () => Promise<void>;
   loadCompanyProductRecords: () => Promise<void>;
@@ -273,7 +280,7 @@ interface AppState {
     status: TripItemLabStatus,
     options?: { sentAt?: string; shipment?: LabShipmentDetails; labId?: number; labEntryCode?: string }
   ) => Promise<void>;
-  upsertLabForm: (input: UpsertLabFormInput) => void;
+  upsertLabForm: (input: UpsertLabFormInput) => Promise<void>;
   updateCompanyProduct: (input: UpdateCompanyProductInput) => void;
   setCompanyProductStatus: (companyProductId: number, status: CompanyProduct["status"]) => void;
   setSamplingCycle: (productType: ConfigurableCycle["productType"], months: number) => void;
@@ -299,12 +306,12 @@ const recalcEmployeeStatuses = (employees: Employee[], trips: Trip[]): Employee[
 const generateId = () => Math.floor(Date.now() + Math.random() * 1000);
 
 export const useAppStore = create<AppState>((set, get) => ({
-  companies: cloneData(mockCompanies),
+  companies: [],
   sites: cloneData(mockSites),
   products: [],
-  companyProducts: cloneData(mockCompanyProducts),
-  companyProductRecords: cloneData(mockCompanyProductRecords),
-  labs: cloneData(mockLabs),
+  companyProducts: [],
+  companyProductRecords: [],
+  labs: [],
   employees: [],
   trips: [],
   tripItems: [],
@@ -392,6 +399,91 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error("Pending lab samples fetch failed.", error);
       set({ pendingSamples: [] });
+    }
+  },
+
+  loadLabItems: async (status) => {
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      const query = status ? `?status=${status}` : "";
+      const response = await fetch(`${baseUrl}/lab-items${query}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const apiTripItems = Array.isArray(data?.tripItems) ? data.tripItems : [];
+      const apiLabForms = Array.isArray(data?.labForms) ? data.labForms : [];
+      set((state) => ({
+        tripItems: (() => {
+          const merged = new Map<number, TripItem>();
+          state.tripItems.forEach((item) => merged.set(item.id, item));
+          apiTripItems.forEach((ti: any) => {
+            const mapped = mapApiTripItem(ti);
+            merged.set(mapped.id, mapped);
+          });
+          return Array.from(merged.values());
+        })(),
+        labForms: apiLabForms.map((form: any) => mapApiLabForm(form))
+      }));
+    } catch (error) {
+      console.error("Lab items fetch failed.", error);
+    }
+  },
+
+  loadLabs: async () => {
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      const response = await fetch(`${baseUrl}/labs`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      set({ labs: Array.isArray(data) ? data.map((row) => ({ id: Number(row.id), name: row.name, city: row.city ?? undefined })) : [] });
+    } catch (error) {
+      console.error("Labs fetch failed.", error);
+      set({ labs: [] });
+    }
+  },
+
+  addLab: async (input) => {
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      const response = await fetch(`${baseUrl}/labs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: input.name, city: (input as any).city })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const created = await response.json();
+      set((state) => ({ labs: [...state.labs, { id: Number(created.id), name: created.name, city: created.city ?? undefined }] }));
+    } catch (error) {
+      console.error("Lab add failed.", error);
+    }
+  },
+
+  updateLab: async (id, changes) => {
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      const response = await fetch(`${baseUrl}/labs/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: changes.name, city: (changes as any).city })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const updated = await response.json();
+      set((state) => ({
+        labs: state.labs.map((lab) => (lab.id === id ? { id, name: updated.name, city: updated.city ?? undefined } : lab))
+      }));
+    } catch (error) {
+      console.error("Lab update failed.", error);
+    }
+  },
+
+  deleteLab: async (id) => {
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      const response = await fetch(`${baseUrl}/labs/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      console.error("Lab delete failed.", error);
+    } finally {
+      set((state) => ({ labs: state.labs.filter((lab) => lab.id !== id) }));
     }
   },
 
@@ -1011,7 +1103,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  upsertLabForm: ({ tripItemId, standardNo, data, status, labNotes, cpcNotes, documents }) => {
+  upsertLabForm: async ({ tripItemId, standardNo, data, status, labNotes, cpcNotes, documents }) => {
+    const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+    let savedForm: LabForm | undefined;
+
+    try {
+      const response = await fetch(`${baseUrl}/lab-forms/${tripItemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          standard_no: standardNo,
+          data,
+          lab_notes: labNotes,
+          cpc_notes: cpcNotes,
+          documents: documents?.map((doc) => ({ ...doc }))
+        })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      savedForm = mapApiLabForm(await response.json());
+    } catch (error) {
+      console.error("Lab form API call failed, falling back to local update.", error);
+    }
+
     set((state) => {
       const existing = state.labForms.find((form) => form.tripItemId === tripItemId);
       const timestamp = new Date().toISOString();
@@ -1032,39 +1146,43 @@ export const useAppStore = create<AppState>((set, get) => ({
           break;
       }
 
-      const nextLabForms = existing
-        ? state.labForms.map((form) =>
-            form.tripItemId === tripItemId
-              ? {
-                  ...form,
-                  standardNo,
-                  data,
-                  status,
-                  updatedAt: timestamp,
-                  ...(labNotes !== undefined ? { labNotes } : {}),
-                  ...(cpcNotes !== undefined ? { cpcNotes } : {}),
-                  ...(documents !== undefined
-                    ? { documents: documents.map((doc) => ({ ...doc })) }
-                    : {})
-                }
-              : form
-          )
-        : [
-            ...state.labForms,
-            {
-              id: generateId(),
-              tripItemId,
-              standardNo,
-              data,
-              status,
-              updatedAt: timestamp,
-              ...(labNotes !== undefined ? { labNotes } : {}),
-              ...(cpcNotes !== undefined ? { cpcNotes } : {}),
-              ...(documents !== undefined
-                ? { documents: documents.map((doc) => ({ ...doc })) }
-                : {})
-            }
-          ];
+      const nextLabForms = savedForm
+        ? state.labForms.some((form) => form.tripItemId === tripItemId)
+          ? state.labForms.map((form) => (form.tripItemId === tripItemId ? savedForm! : form))
+          : [...state.labForms, savedForm]
+        : existing
+          ? state.labForms.map((form) =>
+              form.tripItemId === tripItemId
+                ? {
+                    ...form,
+                    standardNo,
+                    data,
+                    status,
+                    updatedAt: timestamp,
+                    ...(labNotes !== undefined ? { labNotes } : {}),
+                    ...(cpcNotes !== undefined ? { cpcNotes } : {}),
+                    ...(documents !== undefined
+                      ? { documents: documents.map((doc) => ({ ...doc })) }
+                      : {})
+                  }
+                : form
+            )
+          : [
+              ...state.labForms,
+              {
+                id: generateId(),
+                tripItemId,
+                standardNo,
+                data,
+                status,
+                updatedAt: timestamp,
+                ...(labNotes !== undefined ? { labNotes } : {}),
+                ...(cpcNotes !== undefined ? { cpcNotes } : {}),
+                ...(documents !== undefined
+                  ? { documents: documents.map((doc) => ({ ...doc })) }
+                  : {})
+              }
+            ];
 
       const updatedTripItems = state.tripItems.map((item) =>
         item.id === tripItemId
@@ -1124,78 +1242,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   completeTrip: async (input) => {
     const state = get();
     const timestamp = new Date().toISOString();
-    const baseTripItems = state.tripItems;
     const trip = state.trips.find((entry) => entry.id === input.tripId);
 
     const trackingCodeUpdates = new Map<number, string>();
     const payloadEntries: any[] = [];
-    const normalizedEntries: TripCompletionEntry[] = input.entries.map((entry) => {
-      const tripItem = baseTripItems.find((item) => item.id === entry.tripItemId);
-      const companyProductId =
-        tripItem?.companyProductId ?? (entry as any).companyProductId ?? entry.tripItemId ?? undefined;
-      const dutyAssignment = companyProductId && trip?.dutyAssignments ? trip.dutyAssignments[companyProductId] : undefined;
-      const companyProduct = companyProductId
-        ? state.companyProducts.find((product) => product.id === companyProductId)
-        : undefined;
-      const companyProductRecord = companyProductId
-        ? state.companyProductRecords.find((rec) => rec.id === companyProductId)
-        : undefined;
-      const dutyType: TripDutyType =
-        entry.dutyType ?? tripItem?.dutyType ?? dutyAssignment?.dutyType ?? "NUMUNE";
-      const dutyAssigneeIds =
-        entry.dutyAssigneeIds && entry.dutyAssigneeIds.length > 0
-          ? entry.dutyAssigneeIds
-          : tripItem?.dutyAssigneeIds?.length
-            ? tripItem.dutyAssigneeIds
-            : dutyAssignment?.dutyAssigneeIds ?? [];
-      const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
-
-      let trackingCode = entry.trackingCode;
-      if (requiresSample && !entry.sampleNotCompleted && entry.performedAt) {
-        if (!trackingCode) {
-          trackingCode =
-            generateLabEntryCode({
-              productCode: companyProduct?.productCode ?? companyProductRecord?.productCode,
-              performedAt: entry.performedAt,
-              tripItems: baseTripItems,
-              excludeTripItemId: entry.tripItemId
-            }) ?? undefined;
-        }
-        if (trackingCode) {
-          trackingCodeUpdates.set(entry.tripItemId, trackingCode);
-        }
-      } else {
-        trackingCode = undefined;
-      }
-
-      payloadEntries.push({
-        company_product_id: companyProductId ?? null,
-        duty_type: dutyType,
-        duty_assignee_ids: dutyAssigneeIds,
-        performed_at: entry.sampleNotCompleted ? null : entry.performedAt ?? null,
-        inspected_at: entry.inspectionNotCompleted ? null : entry.inspectedAt ?? null,
-        sample_not_completed: entry.sampleNotCompleted ?? null,
-        inspection_not_completed: entry.inspectionNotCompleted ?? null,
-        tracking_code: trackingCode ?? null,
-        lodging_payment_amount: entry.lodgingPaymentAmount ?? null,
-        transport_expense: entry.transportExpense ?? null,
-        meal_lunch_expense: entry.mealLunchExpense ?? null,
-        meal_dinner_expense: entry.mealDinnerExpense ?? null,
-        company_expense: entry.companyExpense ?? null
-      });
-
-      return {
-        ...entry,
-        dutyType,
-        dutyAssigneeIds,
-        trackingCode,
-        performedAt: entry.sampleNotCompleted ? undefined : entry.performedAt,
-        inspectedAt: entry.inspectionNotCompleted ? undefined : entry.inspectedAt,
-        sampleNotCompleted: entry.sampleNotCompleted || undefined,
-        inspectionNotCompleted: entry.inspectionNotCompleted || undefined
-      };
-    });
-
+    
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
       const response = await fetch(`${baseUrl}/trips/${input.tripId}/completion`, {

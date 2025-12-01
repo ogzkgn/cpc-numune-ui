@@ -22,7 +22,10 @@ const LabInboxView = () => {
   const upsertLabForm = useAppStore((state) => state.upsertLabForm);
   const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
   const addToast = useAppStore((state) => state.addToast);
-  const { companyProductMap, companyMap, productMap } = useEntityMaps();
+  const loadLabItems = useAppStore((state) => state.loadLabItems);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
+  const { productMap } = useEntityMaps();
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
 
   const [selectedItem, setSelectedItem] = useState<(typeof tripItems)[number] | null>(null);
@@ -31,16 +34,27 @@ const LabInboxView = () => {
   const isLabUser = activeRole === "lab";
   const isAdminUser = activeRole === "admin";
 
+  const recordMap = useMemo(() => new Map(companyProductRecords.map((rec) => [rec.id, rec])), [companyProductRecords]);
+
   const inboxItems = useMemo(() => {
     return tripItems
       .map((item) => {
         const trip = trips.find((t) => t.id === item.tripId);
-        const companyProduct = companyProductMap.get(item.companyProductId);
-        const company = companyProduct ? companyMap.get(companyProduct.companyId) : undefined;
-        const product = companyProduct ? productMap.get(companyProduct.productId) : undefined;
+        const record = recordMap.get(item.companyProductId);
+        const product =
+          record?.productId && productMap.get(record.productId)
+            ? productMap.get(record.productId)
+            : record
+              ? {
+                  id: record.productId ?? item.companyProductId,
+                  name: record.productName,
+                  productType: record.productType,
+                  standardNo: record.standard
+                }
+              : undefined;
         const form = labForms.find((lab) => lab.tripItemId === item.id);
 
-        if (!company || !product || !companyProduct) return null;
+        if (!record || !product) return null;
         if (
           item.labStatus !== "ACCEPTED" &&
           item.labStatus !== "APPROVED" &&
@@ -52,14 +66,13 @@ const LabInboxView = () => {
         return {
           item,
           trip,
-          companyProduct,
-          company,
+          company: { name: record.companyName, customerCode: record.btCode },
           product,
           form
         };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  }, [tripItems, trips, companyProductMap, companyMap, productMap, labForms]);
+  }, [tripItems, trips, recordMap, productMap, labForms]);
 
   const columns: TableColumn<(typeof inboxItems)[number]>[] = [
     {
@@ -121,14 +134,27 @@ const LabInboxView = () => {
     setSelectedItem(item);
   };
 
-  const currentProduct = selectedItem
-    ? productMap.get(companyProductMap.get(selectedItem.companyProductId)?.productId ?? 0)
-    : undefined;
+  const currentProduct = useMemo(() => {
+    if (!selectedItem) return undefined;
+    const record = recordMap.get(selectedItem.companyProductId);
+    if (record?.productId) {
+      const product = productMap.get(record.productId);
+      if (product) return product;
+    }
+    return record
+      ? { id: record.productId ?? selectedItem.companyProductId, name: record.productName, productType: record.productType, standardNo: record.standard }
+      : undefined;
+  }, [selectedItem, recordMap, productMap]);
 
   const selectedForm = useMemo(
     () => (selectedItem ? labForms.find((lab) => lab.tripItemId === selectedItem.id) : undefined),
     [selectedItem, labForms]
   );
+
+  useEffect(() => {
+    loadLabItems("inbox");
+    loadCompanyProductRecords();
+  }, [loadLabItems, loadCompanyProductRecords]);
 
   useEffect(() => {
     setIsEditingRevision(false);
@@ -168,7 +194,9 @@ const LabInboxView = () => {
   const labNoteValue = toInputValue(labNote);
   const cpcNoteValue = toInputValue(displayedCpcNote);
   const isRevisionEditable = isWaitingConfirm && isAdminUser && isEditingRevision;
-  const documents = (selectedForm?.documents ?? []).map((doc) => ({ ...doc })) as LabFormDocument[];
+  const documents = Array.isArray(selectedForm?.documents)
+    ? (selectedForm?.documents ?? []).map((doc) => ({ ...doc })) as LabFormDocument[]
+    : [];
 
   const renderValue = (value: unknown) => {
     if (value === null || value === undefined) return "-";
@@ -181,9 +209,13 @@ const LabInboxView = () => {
     return String(value);
   };
 
+  const normalizeDocuments = (docs: unknown) =>
+    Array.isArray(docs) ? (docs as LabFormDocument[]).map((doc) => ({ ...doc })) : [];
+
   const handleApprove = () => {
     if (!selectedItem || !selectedForm) return;
     const normalizedData = { ...(selectedForm.data ?? {}) } as Record<string, unknown>;
+    const normalizedDocs = normalizeDocuments(selectedForm.documents);
 
     upsertLabForm({
       tripItemId: selectedItem.id,
@@ -192,7 +224,7 @@ const LabInboxView = () => {
       status: "APPROVED",
       labNotes: selectedForm.labNotes,
       cpcNotes: selectedForm.cpcNotes,
-      documents: (selectedForm.documents ?? []).map((doc) => ({ ...doc }))
+      documents: normalizedDocs
     });
     updateTripItemLabStatus(selectedItem.id, "ACCEPTED");
     addToast({
@@ -207,6 +239,7 @@ const LabInboxView = () => {
   const handleRequestRevision = (note: string) => {
     if (!selectedItem || !selectedForm) return;
     const normalizedData = { ...(selectedForm.data ?? {}) } as Record<string, unknown>;
+    const normalizedDocs = normalizeDocuments(selectedForm.documents);
 
     upsertLabForm({
       tripItemId: selectedItem.id,
@@ -215,7 +248,7 @@ const LabInboxView = () => {
       status: "DRAFT",
       labNotes: selectedForm.labNotes,
       cpcNotes: note,
-      documents: (selectedForm.documents ?? []).map((doc) => ({ ...doc }))
+      documents: normalizedDocs
     });
     updateTripItemLabStatus(selectedItem.id, "PENDING");
     addToast({

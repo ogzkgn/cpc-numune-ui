@@ -37,7 +37,10 @@ const LabProcessingView = () => {
   const activeRole = useAppStore((state) => state.activeRole);
   const addToast = useAppStore((state) => state.addToast);
   const upsertLabForm = useAppStore((state) => state.upsertLabForm);
-  const {companyMap, productMap, companyProductMap } = useEntityMaps();
+  const loadLabItems = useAppStore((state) => state.loadLabItems);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
+  const {productMap } = useEntityMaps();
   const labs = useAppStore((state) => state.labs);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
 
@@ -99,6 +102,7 @@ const LabProcessingView = () => {
   };
 
   const pendingItems = useMemo<PendingEntry[]>(() => {
+    const recordMap = new Map(companyProductRecords.map((rec) => [rec.id, rec]));
     return tripItems.reduce<PendingEntry[]>((accumulator, item) => {
       if (
         !item.labSentAt ||
@@ -109,21 +113,25 @@ const LabProcessingView = () => {
         return accumulator;
       }
 
-      const companyProduct = companyProductMap.get(item.companyProductId);
-      if (!companyProduct) return accumulator;
-      const company = companyMap.get(companyProduct.companyId);
-      const product = productMap.get(companyProduct.productId);
-      if (!company || !product) return accumulator;
+      const record = recordMap.get(item.companyProductId);
+      if (!record) return accumulator;
+      const mappedProduct = record.productId ? productMap.get(record.productId) : undefined;
+      const product = mappedProduct ?? {
+        id: record.productId ?? item.companyProductId,
+        name: record.productName,
+        productType: record.productType,
+        standardNo: record.standard
+      };
       const form = labForms.find((lab) => lab.tripItemId === item.id);
 
       accumulator.push({
         item,
-        companyName: company.name,
-        companyBtCode: company.customerCode,
+        companyName: record.companyName,
+        companyBtCode: record.btCode,
         productName: product.name,
         productType: product.productType,
-        productStandard: product.standardNo ?? undefined,
-        productCode: companyProduct.productCode,
+        productStandard: product.standardNo ?? record.standard,
+        productCode: record.productCode,
         labId: item.labAssignedLabId,
         labEntryCode: item.labEntryCode,
         labSentAt: item.labSentAt ?? item.sampledAt,
@@ -131,7 +139,7 @@ const LabProcessingView = () => {
         labNotes: form?.labNotes,
         cpcNotes: form?.cpcNotes ?? item.labShipmentDetails?.cpcNote,
         documents: form?.documents ?? [],
-        companyProductId: companyProduct.id
+        companyProductId: record.id ?? item.companyProductId
       });
 
       return accumulator;
@@ -140,7 +148,7 @@ const LabProcessingView = () => {
       const bDate = b.labSentAt ? Date.parse(b.labSentAt) : 0;
       return bDate - aDate;
     });
-  }, [tripItems, companyMap, productMap, companyProductMap, labForms]);
+  }, [tripItems, companyProductRecords, productMap, labForms]);
 
   useEffect(() => {
     if (!selectedItem) {
@@ -164,7 +172,7 @@ const LabProcessingView = () => {
 
     setFormValues(nextValues);
     setLabNotes(selectedItem.labNotes ?? "");
-    setDocuments((selectedItem.documents ?? []).map((doc) => ({ ...doc })));
+    setDocuments(Array.isArray(selectedItem.documents) ? selectedItem.documents.map((doc) => ({ ...doc })) : []);
   }, [selectedItem]);
 
   const columns: TableColumn<PendingEntry>[] = [
@@ -234,6 +242,11 @@ const LabProcessingView = () => {
     productType: selectedItem?.productType,
     standardNo: selectedItem?.productStandard
   });
+
+  useEffect(() => {
+    loadLabItems("processing");
+    loadCompanyProductRecords();
+  }, [loadLabItems, loadCompanyProductRecords]);
 
   const canSubmit =
     allowEdit &&

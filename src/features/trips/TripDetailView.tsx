@@ -26,7 +26,7 @@ const TripDetailView = () => {
   const updateTripStatus = useAppStore((state) => state.updateTripStatus);
   const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
   const addToast = useAppStore((state) => state.addToast);
-  const { productMap, companyMap, siteMap } = useEntityMaps();
+  const { productMap, companyMap } = useEntityMaps();
 
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [sampleModalOpen, setSampleModalOpen] = useState(false);
@@ -40,14 +40,13 @@ const TripDetailView = () => {
       const cp = companyProducts.find((cpItem) => cpItem.id === item.companyProductId);
       const product = cp ? productMap.get(cp.productId) : undefined;
       const company = cp ? companyMap.get(cp.companyId) : undefined;
-      const site = cp?.siteId ? siteMap.get(cp.siteId) : undefined;
+     
 
       return {
         item,
         cp,
         product,
         company,
-        site
       };
     });
 
@@ -58,7 +57,7 @@ const TripDetailView = () => {
       items,
       completed
     };
-  }, [trip, tripItems, companyProducts, productMap, companyMap, siteMap]);
+  }, [trip, tripItems, companyProducts, productMap, companyMap]);
 
   if (!trip || !tripSummary) {
     return (

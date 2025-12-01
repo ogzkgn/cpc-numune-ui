@@ -12,7 +12,7 @@ import { openDrivingRoute } from "../../utils/maps";
 import TripCompletionModal from "./TripCompletionModal";
 import TripCompletionSummaryModal from "./TripCompletionSummaryModal";
 import type { TableColumn } from "../../components/ui/Table";
-import type { TripStatus, CompanyProductRecord } from "../../types";
+import type { TripStatus } from "../../types";
 
 const demoRouteAddresses = [
   "Ankara Ümitköy",

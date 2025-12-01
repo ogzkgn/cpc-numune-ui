@@ -8,6 +8,9 @@ const companyProductsRoute = require("./routes/companyProducts");
 const employeesRoute = require("./routes/employees");
 const tripsRoute = require("./routes/trips");
 const labShipmentsRoute = require("./routes/labShipments");
+const labFormsRoute = require("./routes/labForms");
+const labItemsRoute = require("./routes/labItems");
+const labsRoute = require("./routes/labs");
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -30,6 +33,9 @@ app.use("/company-products", companyProductsRoute);
 app.use("/employees", employeesRoute);
 app.use("/trips", tripsRoute);
 app.use("/lab-shipments", labShipmentsRoute);
+app.use("/lab-forms", labFormsRoute);
+app.use("/lab-items", labItemsRoute);
+app.use("/labs", labsRoute);
 
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);

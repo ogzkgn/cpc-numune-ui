@@ -108,6 +108,29 @@ CREATE TABLE IF NOT EXISTS lab_shipments (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Labs
+CREATE TABLE IF NOT EXISTS labs (
+  id         BIGSERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  city       TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Lab forms (results)
+CREATE TABLE IF NOT EXISTS lab_forms (
+  id            BIGSERIAL PRIMARY KEY,
+  trip_item_id  BIGINT NOT NULL UNIQUE REFERENCES trip_items(id) ON DELETE CASCADE,
+  status        TEXT NOT NULL CHECK (status IN ('DRAFT','SUBMITTED','WAITING_CONFIRM','APPROVED')),
+  standard_no   TEXT,
+  data          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  lab_notes     TEXT,
+  cpc_notes     TEXT,
+  documents     JSONB,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Trip completion header
 CREATE TABLE IF NOT EXISTS trip_completions (
   id                        BIGSERIAL PRIMARY KEY,

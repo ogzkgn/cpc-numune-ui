@@ -10,7 +10,7 @@ import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
 import { employeeStatusLabels, employeeStatusTokens, getProductTypeLabel, productTypeLabels } from "../../utils/labels";
 import type { TableColumn } from "../../components/ui/Table";
-import type { Employee, Product, ProductType } from "../../types";
+import type { Employee, Lab, Product, ProductType } from "../../types";
 
 const SettingsView = () => {
   const employees = useAppStore((state) => state.employees);
@@ -18,6 +18,11 @@ const SettingsView = () => {
   const products = useAppStore((state) => state.products);
   const loadProducts = useAppStore((state) => state.loadProducts);
   const loadEmployees = useAppStore((state) => state.loadEmployees);
+  const labs = useAppStore((state) => state.labs);
+  const loadLabs = useAppStore((state) => state.loadLabs);
+  const addLab = useAppStore((state) => state.addLab);
+  const updateLab = useAppStore((state) => state.updateLab);
+  const deleteLab = useAppStore((state) => state.deleteLab);
   const addProduct = useAppStore((state) => state.addProduct);
   const deleteProduct = useAppStore((state) => state.deleteProduct);
   const addEmployee = useAppStore((state) => state.addEmployee);
@@ -28,7 +33,8 @@ const SettingsView = () => {
   useEffect(() => {
     loadProducts();
     loadEmployees();
-  }, [loadProducts, loadEmployees]);
+    loadLabs();
+  }, [loadProducts, loadEmployees, loadLabs]);
 
   const employeeColumns: TableColumn<Employee>[] = [
     { id: "name", header: "Ad", cell: (row) => row.name },
@@ -96,6 +102,23 @@ const SettingsView = () => {
     }
   ];
 
+  const labColumns: TableColumn<Lab>[] = [
+    { id: "name", header: "Laboratuvar", cell: (row) => row.name },
+    { id: "city", header: "Şehir", cell: (row) => row.city ?? "-" },
+    {
+      id: "actions",
+      header: "İşlemler",
+      width: "120px",
+      align: "center",
+      cell: (row) => (
+        <div className="flex items-center justify-center gap-1">
+          <Button size="sm" variant="ghost" icon={<Edit3 className="h-4 w-4" />} onClick={() => handleEditLab(row)} />
+          <Button size="sm" variant="ghost" icon={<Trash2 className="h-4 w-4" />} onClick={() => handleDeleteLab(row)} />
+        </div>
+      )
+    }
+  ];
+
   type ProductFormState = {
     name: string;
     productTypeSelection: string;
@@ -134,6 +157,14 @@ const SettingsView = () => {
     skills: []
   });
 
+  type LabFormState = {
+    id: number | null;
+    name: string;
+    city: string;
+  };
+
+  const [labForm, setLabForm] = useState<LabFormState>({ id: null, name: "", city: "" });
+
   const sortedProducts = useMemo(
     () => [...products].sort((a, b) => a.name.localeCompare(b.name, "tr")),
     [products]
@@ -171,6 +202,31 @@ const SettingsView = () => {
       }
       return { ...prev, skills: Array.from(skills) };
     });
+  };
+
+  const handleLabSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!labForm.name.trim()) {
+      addToast({ title: "Laboratuvar adı zorunlu", variant: "error" });
+      return;
+    }
+    if (labForm.id) {
+      updateLab(labForm.id, { name: labForm.name.trim(), city: labForm.city.trim() });
+      addToast({ title: "Laboratuvar güncellendi", variant: "success" });
+    } else {
+      addLab({ name: labForm.name.trim(), city: labForm.city.trim() });
+      addToast({ title: "Laboratuvar eklendi", variant: "success" });
+    }
+    setLabForm({ id: null, name: "", city: "" });
+  };
+
+  const handleEditLab = (lab: Lab) => {
+    setLabForm({ id: lab.id, name: lab.name, city: lab.city ?? "" });
+  };
+
+  const handleDeleteLab = (lab: Lab) => {
+    deleteLab(lab.id);
+    addToast({ title: "Laboratuvar silindi", variant: "info" });
   };
 
   const handleProductSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -362,15 +418,37 @@ const SettingsView = () => {
             </form>
           </div>
         </Card>
-        <Card header="Numune Döngüleri">
-          <div className="space-y-2 text-sm text-slate-600">
-            {samplingCycles.map((cycle) => (
-              <div key={cycle.productType} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-                <span>{getProductTypeLabel(cycle.productType)}</span>
-                <strong>{cycle.months} ay</strong>
+        <Card header="Laboratuvarlar">
+          <div className="space-y-4">
+            <form className="grid gap-3 md:grid-cols-2" onSubmit={handleLabSubmit}>
+              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                Laboratuvar Adı
+                <input
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={labForm.name}
+                  onChange={(event) => setLabForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="Örn. İstanbul Merkez Lab."
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                Şehir
+                <input
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={labForm.city}
+                  onChange={(event) => setLabForm((prev) => ({ ...prev, city: event.target.value }))}
+                  placeholder="Örn. İstanbul"
+                />
+              </label>
+              <div className="flex items-end gap-2 md:col-span-2">
+                <Button type="submit">{labForm.id ? "Güncelle" : "Ekle"}</Button>
+                {labForm.id ? (
+                  <Button variant="ghost" type="button" onClick={() => setLabForm({ id: null, name: "", city: "" })}>
+                    İptal
+                  </Button>
+                ) : null}
               </div>
-            ))}
-            <p className="text-xs text-slate-500">Cüruf ve uçucu kül periyotları prototipte düzenlenebilir olarak gösterilir.</p>
+            </form>
+            <Table columns={labColumns} data={labs} keyExtractor={(row) => row.id} emptyState="Laboratuvar bulunmuyor" />
           </div>
         </Card>
       </div>
@@ -467,18 +545,6 @@ const SettingsView = () => {
                 Ürünü Kaydet
               </Button>
             </form>
-          </div>
-        </div>
-      </Card>
-      <Card header="E-posta Şablonları">
-        <div className="space-y-3 text-sm text-slate-600">
-          <div>
-            <h3 className="font-semibold text-slate-800">Hatırlatma</h3>
-            <p>{"Sayın {{firma}}, {{$data.nextDate}} tarihinde numune ziyaretimiz planlanmıştır."}</p>
-          </div>
-          <div>
-            <h3 className="font-semibold text-slate-800">Laboratuvar Bilgilendirme</h3>
-            <p>{"Numune kodu: {{numune_kodu}}. Sonuçlarınızı portaldan takip edebilirsiniz."}</p>
           </div>
         </div>
       </Card>
