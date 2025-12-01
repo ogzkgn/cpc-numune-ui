@@ -1,11 +1,11 @@
-﻿import Modal from "../../components/ui/Modal";
+﻿import { useEffect } from "react";
+import Modal from "../../components/ui/Modal";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { generateLabEntryCode } from "../../utils/samples";
-import type { TripCompletion, TripDutyType } from "../../types";
+import type { TripCompletion, TripDutyType, CompanyProductRecord } from "../../types";
 
 const transportLabels: Record<TripCompletion["transportMode"], string> = {
   COMPANY_VEHICLE: "Şirket Aracı",
@@ -45,10 +45,37 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
   const employees = useAppStore((state) => state.employees);
   const tripCompletions = useAppStore((state) => state.tripCompletions);
   const tripItems = useAppStore((state) => state.tripItems);
-  const { companyProductMap, companyMap, siteMap, productMap } = useEntityMaps();
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
+  const products = useAppStore((state) => state.products);
+  const loadTripCompletion = useAppStore((state) => state.loadTripCompletion);
+  const loadTrips = useAppStore((state) => state.loadTrips);
+  const loadEmployees = useAppStore((state) => state.loadEmployees);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const loadProductsStore = useAppStore((state) => state.loadProducts);
 
   const trip = tripId ? trips.find((item) => item.id === tripId) : undefined;
   const completion = tripId ? tripCompletions.find((entry) => entry.tripId === tripId) : undefined;
+
+  useEffect(() => {
+    if (open) {
+      loadTrips();
+      loadEmployees();
+      loadCompanyProductRecords();
+      loadProductsStore();
+      if (tripId && !completion) {
+        loadTripCompletion(tripId);
+      }
+    }
+  }, [
+    open,
+    tripId,
+    completion,
+    loadTripCompletion,
+    loadTrips,
+    loadEmployees,
+    loadCompanyProductRecords,
+    loadProductsStore
+  ]);
 
   const participantNames =
     completion?.completedByEmployeeIds
@@ -58,10 +85,11 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
   const enrichedEntries =
     completion?.entries.map((entry) => {
       const tripItem = tripItems.find((item) => item.id === entry.tripItemId);
-      const cp = tripItem ? companyProductMap.get(tripItem.companyProductId) : undefined;
-      const company = cp ? companyMap.get(cp.companyId) : undefined;
-      const product = cp ? productMap.get(cp.productId) : undefined;
-      const site = cp?.siteId ? siteMap.get(cp.siteId) : undefined;
+      const companyProductId = tripItem?.companyProductId ?? (entry as any).companyProductId ?? entry.tripItemId;
+      const record: CompanyProductRecord | undefined = companyProductRecords.find(
+        (rec) => rec.id === companyProductId
+      );
+      const product = record?.productId ? products.find((p) => p.id === record.productId) : undefined;
       const dutyType: TripDutyType = entry.dutyType ?? tripItem?.dutyType ?? "NUMUNE";
       const dutyAssigneeIds =
         entry.dutyAssigneeIds && entry.dutyAssigneeIds.length > 0
@@ -76,7 +104,7 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
         requiresSample && entry.performedAt && !entry.sampleNotCompleted
           ? entry.trackingCode ??
             generateLabEntryCode({
-              productCode: cp?.productCode,
+              productCode: record?.productCode,
               performedAt: entry.performedAt,
               tripItems,
               excludeTripItemId: entry.tripItemId
@@ -86,10 +114,11 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
 
       return {
         entry,
-        company,
+        company: undefined,
         product,
-        site,
-        companyProduct: cp,
+        site: undefined,
+        companyProduct: undefined,
+        companyProductRecord: record,
         dutyType,
         dutyAssigneeNames,
         requiresSample,
@@ -223,17 +252,17 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {enrichedEntries.map(({ entry, company, site, product, companyProduct, dutyType, dutyAssigneeNames, requiresSample, requiresInspection, trackingCode }) => (
+                    {enrichedEntries.map(({ entry, companyProductRecord, product, dutyType, dutyAssigneeNames, requiresSample, requiresInspection, trackingCode }) => (
                       <tr key={entry.tripItemId} className="align-top text-slate-700">
-                        <td className="px-3 py-2">{company?.customerCode ?? "-"}</td>
-                        <td className="px-3 py-2">{companyProduct?.productCode ?? "-"}</td>
-                        <td className="px-3 py-2">{formatDate(companyProduct?.certificateDate)}</td>
+                        <td className="px-3 py-2">{companyProductRecord?.btCode ?? "-"}</td>
+                        <td className="px-3 py-2">{companyProductRecord?.productCode ?? "-"}</td>
+                        <td className="px-3 py-2">{formatDate(companyProductRecord?.certificateDate)}</td>
                         <td className="px-3 py-2">
-                          {company?.name ?? "-"}
-                          {site?.address ? ` / ${site.address}` : ""}
+                          {companyProductRecord?.companyName ?? "-"}
+                          {companyProductRecord?.location ? ` / ${companyProductRecord.location}` : ""}
                         </td>
-                        <td className="px-3 py-2">{site ? (site.district ? `${site.district} / ${site.city}` : site.city) : "-"}</td>
-                        <td className="px-3 py-2">{product?.groupName ?? product?.productType ?? "-"}</td>
+                        <td className="px-3 py-2">{companyProductRecord?.location ?? "-"}</td>
+                        <td className="px-3 py-2">{product?.groupName ?? product?.productType ?? companyProductRecord?.productType ?? "-"}</td>
                         <td className="px-3 py-2">
                           <div className="flex flex-col gap-1">
                             <span className="text-sm font-semibold text-slate-800">{dutyTypeLabels[dutyType]}</span>

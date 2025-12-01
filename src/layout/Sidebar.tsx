@@ -12,7 +12,7 @@ interface NavItem {
   roles: UserRole[];
 }
 
-const navItems: NavItem[] = [
+export const navItems: NavItem[] = [
   { path: "/", label: "Gösterge Paneli", icon: Home, roles: ["admin"] },
   { path: "/firma-urunleri", label: "Firma-Ürünler", icon: Layers, roles: ["admin"] },
   { path: "/bu-ay-vadesi", label: "Takip ve Planlama", icon: ClipboardList, roles: ["admin"] },

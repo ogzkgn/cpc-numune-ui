@@ -147,11 +147,7 @@ export const getFieldConfig = (options: FieldConfigOptions = {}): LabFieldConfig
 };
 
 export const SHIPMENT_FIELDS: { key: keyof LabShipmentDetails; label: string; isDate?: boolean }[] = [
-  { key: "productionDate", label: "Üretim Tarihi", isDate: true },
-  { key: "lastSaleDate", label: "Son Satış Tarihi", isDate: true },
-  { key: "storage", label: "Silo / Depo No" },
   { key: "sealNo", label: "Mühür No" },
-  { key: "foreignMatter", label: "Yabancı Madde" },
   { key: "weight", label: "Numune Ağırlığı (kg)" },
   { key: "cpcNote", label: "CPC Notu" }
 ];

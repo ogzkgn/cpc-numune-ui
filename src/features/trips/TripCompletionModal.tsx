@@ -11,7 +11,8 @@ import type {
   Trip,
   TripCompletionEntry,
   TripDutyType,
-  TripItem
+  TripItem,
+  CompanyProductRecord
 } from "../../types";
 
 type EntryFormState = {
@@ -77,21 +78,35 @@ interface TripCompletionModalProps {
 const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps) => {
   const trips = useAppStore((state) => state.trips);
   const employees = useAppStore((state) => state.employees);
-  const companyProducts = useAppStore((state) => state.companyProducts);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
   const tripItems = useAppStore((state) => state.tripItems);
   const tripCompletions = useAppStore((state) => state.tripCompletions);
   const completeTrip = useAppStore((state) => state.completeTrip);
-  const { companyMap, siteMap, productMap } = useEntityMaps();
+  const loadTrips = useAppStore((state) => state.loadTrips);
+  const loadEmployees = useAppStore((state) => state.loadEmployees);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const {productMap } = useEntityMaps();
   const employeeMap = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
 
   const [formState, setFormState] = useState<TripCompletionFormState>(createEmptyFormState());
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const trip = useMemo<Trip | undefined>(() => trips.find((item) => item.id === tripId), [trips, tripId]);
-  const relatedTripItems = useMemo<TripItem[]>(
-    () => (trip ? tripItems.filter((item) => item.tripId === trip.id) : []),
-    [tripItems, trip]
-  );
+  const relatedTripItems = useMemo<TripItem[]>(() => {
+    if (!trip) return [];
+    const items = tripItems.filter((item) => item.tripId === trip.id);
+    if (items.length > 0) return items;
+    const duties = trip.dutyAssignments ? Object.entries(trip.dutyAssignments) : [];
+    return duties.map(([companyProductId, duty]) => ({
+      id: Number(companyProductId),
+      tripId: trip.id,
+      companyProductId: Number(companyProductId),
+      dutyType: duty.dutyType,
+      dutyAssigneeIds: duty.dutyAssigneeIds,
+      sampled: false
+    }));
+  }, [tripItems, trip, trip?.dutyAssignments]);
   const tripItemById = useMemo(() => new Map(relatedTripItems.map((item) => [item.id, item])), [relatedTripItems]);
   const existingCompletion = useMemo(
     () => (trip ? tripCompletions.find((entry) => entry.tripId === trip.id) : undefined),
@@ -138,7 +153,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
       entries
     });
     setError(null);
-  }, [open, trip, relatedTripItems, existingCompletion]);
+  }, [open, trip, relatedTripItems, existingCompletion, companyProductRecords]);
 
   const assignedEmployees = useMemo(
     () => (trip ? employees.filter((employee) => trip.assigneeIds.includes(employee.id)) : []),
@@ -238,12 +253,21 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     });
   };
 
-  const handleSubmit = () => {
+  useEffect(() => {
+    if (open) {
+      loadTrips();
+      loadEmployees();
+      loadCompanyProductRecords();
+    }
+  }, [open, loadTrips, loadEmployees, loadCompanyProductRecords]);
+
+  const handleSubmit = async () => {
     if (!trip) return;
     if (!isFormValid()) {
       setError("Lütfen zorunlu alanları doldurun.");
       return;
     }
+    setSaving(true);
 
     const payloadEntries: TripCompletionEntry[] = formState.entries.map((entry) => {
       const tripItem = tripItemById.get(entry.tripItemId);
@@ -257,8 +281,8 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         trip?.assigneeIds ??
         [];
 
-      const companyProduct = tripItem
-        ? companyProducts.find((product) => product.id === tripItem.companyProductId)
+      const companyProductRecord = tripItem
+        ? companyProductRecords.find((product) => product.id === tripItem.companyProductId)
         : undefined;
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
       let trackingCode = entry.trackingCode;
@@ -266,7 +290,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         trackingCode =
           trackingCode ??
           generateLabEntryCode({
-            productCode: companyProduct?.productCode,
+            productCode: companyProductRecord?.productCode,
             performedAt: entry.performedAt,
             tripItems,
             excludeTripItemId: entry.tripItemId
@@ -296,7 +320,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     const totalKmValue = formState.totalKm ? Number(formState.totalKm) : undefined;
     const totalDaysValue = formState.totalDays ? Number(formState.totalDays) : undefined;
 
-    completeTrip({
+    await completeTrip({
       tripId: trip.id,
       completedByEmployeeIds: formState.completedBy,
       transportMode: effectiveTransportMode as TransportMode,
@@ -306,16 +330,18 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
       lodgingProvider: effectiveLodgingProvider || undefined,
       entries: payloadEntries
     });
+    setSaving(false);
     onClose();
   };
 
   const entryViews = useMemo(() => {
     return formState.entries.map((entry) => {
       const tripItem = relatedTripItems.find((item) => item.id === entry.tripItemId);
-      const cp = tripItem ? companyProducts.find((item) => item.id === tripItem.companyProductId) : undefined;
-      const company = cp ? companyMap.get(cp.companyId) : undefined;
-      const product = cp ? productMap.get(cp.productId) : undefined;
-      const site = cp?.siteId ? siteMap.get(cp.siteId) : undefined;
+      const record: CompanyProductRecord | undefined = tripItem
+        ? companyProductRecords.find((item) => item.id === tripItem.companyProductId)
+        : undefined;
+      const product = record?.productId ? productMap.get(record.productId) : undefined;
+      const site = undefined;
       const dutyAssignment = tripItem ? trip?.dutyAssignments?.[tripItem.companyProductId] : undefined;
       const completionEntry = existingCompletion?.entries.find((item) => item.tripItemId === entry.tripItemId);
       const dutyType: TripDutyType =
@@ -323,10 +349,11 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
       const dutyAssigneeIds =
         (tripItem?.dutyAssigneeIds && tripItem.dutyAssigneeIds.length > 0
           ? tripItem.dutyAssigneeIds
-          : completionEntry?.dutyAssigneeIds) ??
-        dutyAssignment?.dutyAssigneeIds ??
-        trip?.assigneeIds ??
-        [];
+          : completionEntry?.dutyAssigneeIds && completionEntry.dutyAssigneeIds.length > 0
+            ? completionEntry.dutyAssigneeIds
+            : dutyAssignment?.dutyAssigneeIds && dutyAssignment.dutyAssigneeIds.length > 0
+              ? dutyAssignment.dutyAssigneeIds
+              : trip?.assigneeIds ?? []) ?? [];
       const dutyAssignees = dutyAssigneeIds
         .map((id) => employeeMap.get(id))
         .filter((value): value is typeof employees[number] => Boolean(value));
@@ -336,7 +363,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         entry.trackingCode ??
         (requiresSample && entry.performedAt && !entry.sampleNotCompleted
           ? generateLabEntryCode({
-              productCode: cp?.productCode,
+              productCode: record?.productCode,
               performedAt: entry.performedAt,
               tripItems,
               excludeTripItemId: entry.tripItemId
@@ -346,10 +373,11 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
       return {
         entry,
         tripItem,
-        company,
+        company: undefined,
         product,
         site,
-        companyProduct: cp,
+        companyProduct: undefined,
+        companyProductRecord: record,
         dutyType,
         dutyAssigneeIds,
         dutyAssignees,
@@ -361,10 +389,8 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
   }, [
     formState.entries,
     relatedTripItems,
-    companyProducts,
-    companyMap,
+    companyProductRecords,
     productMap,
-    siteMap,
     trip,
     tripItems,
     existingCompletion,
@@ -383,7 +409,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
           <Button variant="ghost" onClick={onClose}>
             Vazgeç
           </Button>
-          <Button onClick={handleSubmit} disabled={!trip}>
+          <Button onClick={handleSubmit} disabled={!trip || saving}>
             Kaydet ve Tamamla
           </Button>
         </div>
@@ -577,24 +603,24 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                     <th className="px-3 py-2">Ulaşım Masrafı</th>
                     <th className="px-3 py-2">Öğle Yemeği</th>
                     <th className="px-3 py-2">Akşam Yemeği</th>
-                    <th className="px-3 py-2">Diğer</th>
+                    <th className="px-3 py-2">Diğer Giderler</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {entryViews.map(({ entry, company, product, site, companyProduct, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
+                  {entryViews.map(({ entry, product, companyProductRecord, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
                     <tr key={entry.tripItemId} className="align-top">
                       <td className="px-3 py-2 text-slate-700">
-                        {company?.name ?? "-"}
-                        {site ? ` / ${site.address ?? site.city}` : ""}
+                        {companyProductRecord?.companyName ?? "-"}
+                        {companyProductRecord?.location ? ` / ${companyProductRecord.location}` : ""}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        {companyProduct?.productCode ?? "-"}
+                        {companyProductRecord?.productCode ?? "-"}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        {site ? (site.district ? `${site.district} / ${site.city}` : site.city) : "-"}
+                        {companyProductRecord?.location ?? "-"}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        {product?.groupName ?? product?.productType ?? "-"}
+                        {product?.groupName ?? product?.productType ?? companyProductRecord?.productType ?? "-"}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-col gap-1">

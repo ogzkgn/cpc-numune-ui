@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Filter, Plus, RotateCw } from "lucide-react";
 
 import Button from "../../components/ui/Button";
@@ -8,11 +8,16 @@ import Drawer from "../../components/ui/Drawer";
 import Table from "../../components/ui/Table";
 import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate, calculateNextDueDate, getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
-import { productTypeLabels, paymentStatusLabels, paymentStatusTokens } from "../../utils/labels";
+import { getProductTypeLabel, paymentStatusLabels, paymentStatusTokens } from "../../utils/labels";
 import { buildAnnualSampleCounts, getRequiredSampleCount } from "../../utils/samples";
-import type { CompanyProductStatus, ProductType, PaymentStatus } from "../../types";
+import type {
+  CompanyProduct,
+  CompanyProductRecord,
+  CompanyProductStatus,
+  ProductType,
+  PaymentStatus
+} from "../../types";
 import type { TableColumn } from "../../components/ui/Table";
 import type { PriorityFlag } from "../../utils/date";
 
@@ -40,6 +45,23 @@ const priorityLabel: Record<PriorityKey, string> = {
   approaching: "Yaklaşıyor"
 };
 
+const buildRecordKey = (record: CompanyProductRecord) =>
+  `${record.companyName}__${record.productId ?? record.productType}__${record.productCode ?? record.standard ?? ""}`;
+
+const statusLabels: Record<CompanyProductStatus, string> = {
+  devam: "Devam",
+  kesikli: "Kesikli",
+  aski: "Askı",
+  iptal: "İptal"
+};
+
+const statusClassMap: Record<CompanyProductStatus, string> = {
+  devam: "bg-green-100 text-green-700",
+  kesikli: "bg-amber-100 text-amber-700",
+  aski: "bg-slate-200 text-slate-700",
+  iptal: "bg-red-100 text-red-700"
+};
+
 const getPriorityMeta = (flag: PriorityFlag): { label: string; variant: BadgeVariant } => ({
   label: flag === "overdue" ? "Gecikmiş" : flag === "approaching" ? "Yaklaşıyor" : "Uygun",
   variant: flag === "overdue" ? "danger" : flag === "approaching" ? "warning" : "success"
@@ -50,13 +72,21 @@ const DueThisMonthView = () => {
   const [isFilterOpen, setFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const companyProducts = useAppStore((state) => state.companyProducts);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const loadProducts = useAppStore((state) => state.loadProducts);
+  const products = useAppStore((state) => state.products);
   const openTripPlanner = useAppStore((state) => state.openTripPlanner);
   const addToast = useAppStore((state) => state.addToast);
   const tripItems = useAppStore((state) => state.tripItems);
   const tripCompletions = useAppStore((state) => state.tripCompletions);
 
-  const { productMap, companyMap, siteMap } = useEntityMaps();
+  useEffect(() => {
+    loadProducts();
+    loadCompanyProductRecords();
+  }, [loadProducts, loadCompanyProductRecords]);
+
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const currentYear = new Date().getFullYear();
   const sampleCounts = useMemo(
@@ -65,30 +95,38 @@ const DueThisMonthView = () => {
   );
 
   const list = useMemo(() => {
-    return companyProducts
-      .map((cp) => {
-        const product = productMap.get(cp.productId);
-        const company = companyMap.get(cp.companyId);
-        if (!product || !company) return null;
+    return companyProductRecords
+      .map((record) => {
+        const product = record.productId ? productMap.get(record.productId) : undefined;
+        if (!product) return null;
 
-        const sampleCount = sampleCounts.get(cp.id) ?? 0;
-        const status = (cp.status ?? "devam") as CompanyProductStatus;
+        const asCompanyProduct: CompanyProduct = {
+          id: record.id ?? 0,
+          companyId: 0,
+          productId: product.id,
+          productCode: record.productCode,
+          lastSampleDate: record.lastSampleDate,
+          lastInspectionDate: record.lastInspectionDate,
+          status: record.status,
+          paymentStatus: record.paymentStatus
+        };
+
+        const sampleCount = record.id ? sampleCounts.get(record.id) ?? 0 : 0;
+        const status = (record.status ?? "devam") as CompanyProductStatus;
         if (status === "iptal" || status === "aski") return null;
         const sampleQuota = getRequiredSampleCount(product.productType, status);
-        const nextDue = calculateNextDueDate(cp, product);
-        const priority = getPriorityFlag(cp, product);
-        const inspectionPriority = getInspectionPriorityFlag(cp);
+        const nextDue = calculateNextDueDate(asCompanyProduct, product);
+        const priority = getPriorityFlag(asCompanyProduct, product);
+        const inspectionPriority = getInspectionPriorityFlag(asCompanyProduct);
         const score =
           (priority === "overdue" ? 3 : priority === "approaching" ? 1 : 0) +
           (inspectionPriority === "overdue" ? 3 : inspectionPriority === "approaching" ? 1 : 0);
 
-        const paymentStatus = (cp.paymentStatus ?? "yapmadi") as PaymentStatus;
+        const paymentStatus = (record.paymentStatus ?? "yapmadi") as PaymentStatus;
 
         return {
-          cp,
+          record,
           product,
-          company,
-          site: cp.siteId ? siteMap.get(cp.siteId) : undefined,
           priority,
           inspectionPriority,
           score,
@@ -100,23 +138,23 @@ const DueThisMonthView = () => {
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .filter((item) => {
-        const { product, company, site, priority, paymentStatus } = item;
+        const { record, priority, paymentStatus } = item;
 
-        if (filters.productTypes.length > 0 && !filters.productTypes.includes(product.productType)) {
+        if (filters.productTypes.length > 0 && !filters.productTypes.includes(record.productType)) {
           return false;
         }
 
-        if (filters.city && site?.city !== filters.city) {
+        if (filters.city && record.location !== filters.city) {
           return false;
         }
 
-        if (filters.standardNo && product.standardNo !== filters.standardNo) {
+        if (filters.standardNo && record.standard !== filters.standardNo) {
           return false;
         }
 
         if (
           filters.customerCode &&
-          !company.customerCode?.toLowerCase().includes(filters.customerCode.toLowerCase())
+          !(record.btCode ?? "-").toLowerCase().includes(filters.customerCode.toLowerCase())
         ) {
           return false;
         }
@@ -127,21 +165,21 @@ const DueThisMonthView = () => {
 
         if (
           filters.companyName &&
-          !company.name.toLowerCase().includes(filters.companyName.toLowerCase())
+          !record.companyName.toLowerCase().includes(filters.companyName.toLowerCase())
         ) {
           return false;
         }
 
         if (
           filters.productCode &&
-          !(item.cp.productCode ?? "-").toLowerCase().includes(filters.productCode.toLowerCase())
+          !(record.productCode ?? "-").toLowerCase().includes(filters.productCode.toLowerCase())
         ) {
           return false;
         }
 
         if (
           filters.productName &&
-          !product.name.toLowerCase().includes(filters.productName.toLowerCase())
+          !(record.productName ?? "").toLowerCase().includes(filters.productName.toLowerCase())
         ) {
           return false;
         }
@@ -153,59 +191,71 @@ const DueThisMonthView = () => {
         return true;
       })
       .sort((a, b) => b.score - a.score);
-  }, [companyProducts, productMap, companyMap, siteMap, filters, sampleCounts]);
+  }, [companyProductRecords, productMap, filters, sampleCounts]);
+
+  const availableProductTypes = useMemo(() => {
+    const types = new Set<ProductType>();
+    companyProductRecords.forEach((record) => {
+      const product = record.productId ? productMap.get(record.productId) : undefined;
+      if (product?.productType) {
+        types.add(product.productType);
+      }
+      if (record.productType) {
+        types.add(record.productType);
+      }
+    });
+    return Array.from(types).sort((a, b) => getProductTypeLabel(a).localeCompare(getProductTypeLabel(b), "tr"));
+  }, [companyProductRecords, productMap]);
 
   const uniqueCities = useMemo(() => {
     const values = new Set<string>();
-    companyProducts.forEach((cp) => {
-      const site = cp.siteId ? siteMap.get(cp.siteId) : undefined;
-      if (site?.city) {
-        values.add(site.city);
+    companyProductRecords.forEach((record) => {
+      if (record.location) {
+        values.add(record.location);
       }
     });
     return Array.from(values);
-  }, [companyProducts, siteMap]);
+  }, [companyProductRecords]);
 
   const uniqueStandards = useMemo(() => {
     const values = new Set<string>();
-    companyProducts.forEach((cp) => {
-      const product = productMap.get(cp.productId);
-      if (product?.standardNo) {
-        values.add(product.standardNo);
+    companyProductRecords.forEach((record) => {
+      if (record.standard) {
+        values.add(record.standard);
       }
     });
     return Array.from(values);
-  }, [companyProducts, productMap]);
+  }, [companyProductRecords]);
 
   const uniqueCompanies = useMemo(() => {
     const values = new Set<string>();
-    companyProducts.forEach((cp) => {
-      const company = companyMap.get(cp.companyId);
-      if (company?.name) {
-        values.add(company.name);
+    companyProductRecords.forEach((record) => {
+      if (record.companyName) {
+        values.add(record.companyName);
       }
     });
     return Array.from(values);
-  }, [companyProducts, companyMap]);
+  }, [companyProductRecords]);
 
   const uniqueProductNames = useMemo(() => {
     const values = new Set<string>();
-    companyProducts.forEach((cp) => {
-      const product = productMap.get(cp.productId);
-      if (product?.name) {
-        values.add(product.name);
+    companyProductRecords.forEach((record) => {
+      if (record.productName) {
+        values.add(record.productName);
       }
     });
     return Array.from(values);
-  }, [companyProducts, productMap]);
+  }, [companyProductRecords]);
 
   const handleSelectRow = (item: (typeof list)[number], selected: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
+      const id = item.record.id;
+      if (id === undefined) return next;
       if (selected) {
-        next.add(item.cp.id);
+        next.add(id);
       } else {
-        next.delete(item.cp.id);
+        next.delete(id);
       }
       return next;
     });
@@ -213,49 +263,59 @@ const DueThisMonthView = () => {
 
   const tableColumns: TableColumn<(typeof list)[number]>[] = [
     {
-      id: "company",
-      header: "Firma",
-      cell: (item) => item.company.name
-    },
-    {
-      id: "btCode",
-      header: "BT Kod",
-      cell: (item) => item.company.customerCode ?? "-"
+      id: "productType",
+      header: "Ürün Tipi",
+      cell: (item) => getProductTypeLabel(item.record.productType)
     },
     {
       id: "productCode",
       header: "Ürün Kodu",
-      cell: (item) => item.cp.productCode ?? "-"
+      cell: (item) => item.record.productCode ?? "-"
+    },
+    {
+      id: "btCode",
+      header: "BT Kod",
+      cell: (item) => item.record.btCode ?? "-"
+    },
+    {
+      id: "code",
+      header: "Kod",
+      cell: (item) => item.record.code ?? "-"
+    },
+    {
+      id: "company",
+      header: "Firma Adı",
+      cell: (item) => item.record.companyName
     },
     {
       id: "city",
-      header: "Şehir",
-      cell: (item) => item.site?.city ?? "-"
+      header: "İl / İlçe",
+      cell: (item) => item.record.location ?? "-"
     },
     {
       id: "product",
-      header: "Ürün",
-      cell: (item) => item.product.name
+      header: "Ürün Adı",
+      cell: (item) => item.record.productName ?? item.product.name
     },
     {
       id: "standard",
       header: "Standart",
-      cell: (item) => item.product.standardNo ?? "-"
+      cell: (item) => item.record.standard ?? item.product.standardNo ?? "-"
     },
     {
       id: "certificateDate",
-      header: "Sertifika Tarihi",
-      cell: (item) => formatDate(item.cp.certificateDate)
+      header: "Belge Tarihi",
+      cell: (item) => formatDate(item.record.certificateDate)
     },
     {
       id: "lastSample",
-      header: "Son Numune",
-      cell: (item) => formatDate(item.cp.lastSampleDate)
+      header: "Son Numune Tarihi",
+      cell: (item) => formatDate(item.record.lastSampleDate)
     },
     {
       id: "lastInspection",
-      header: "Son Gözetim",
-      cell: (item) => formatDate(item.cp.lastInspectionDate)
+      header: "Son Denetim Tarihi",
+      cell: (item) => formatDate(item.record.lastInspectionDate)
     },
     {
       id: "sampleCount",
@@ -296,6 +356,15 @@ const DueThisMonthView = () => {
           </div>
         );
       }
+    },
+    {
+      id: "status",
+      header: "Durum",
+      cell: (item) => (
+        <Badge className={`px-3 py-1 text-xs font-semibold ${statusClassMap[item.record.status ?? "devam"]}`}>
+          {statusLabels[item.record.status ?? "devam"]}
+        </Badge>
+      )
     }
   ];
 
@@ -348,7 +417,7 @@ const DueThisMonthView = () => {
               }))
             }
           >
-            {productTypeLabels[type]}
+            {getProductTypeLabel(type)}
           </Chip>
         ))}
         {filters.priority ? (
@@ -404,7 +473,7 @@ const DueThisMonthView = () => {
         selectableRows
         selectedRowIds={selectedIds}
         onRowSelectChange={(row, selected) => handleSelectRow(row, selected)}
-        keyExtractor={(item) => item.cp.id}
+        keyExtractor={(item) => item.record.id ?? buildRecordKey(item.record)}
         emptyState="Bu ay için kritik kayıt bulunmuyor"
         rowClassName={(item) => {
           if (item.priority === "overdue" || item.inspectionPriority === "overdue") return "bg-red-50";
@@ -418,8 +487,7 @@ const DueThisMonthView = () => {
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Ürün Tipi</h3>
             <div className="flex flex-wrap gap-2">
-              {Object.entries(productTypeLabels).map(([key, label]) => {
-                const type = key as ProductType;
+              {availableProductTypes.map((type) => {
                 const active = filters.productTypes.includes(type);
                 return (
                   <Chip
@@ -435,7 +503,7 @@ const DueThisMonthView = () => {
                       }))
                     }
                   >
-                    {label}
+                    {getProductTypeLabel(type)}
                   </Chip>
                 );
               })}

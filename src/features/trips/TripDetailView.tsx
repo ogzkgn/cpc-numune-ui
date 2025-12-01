@@ -88,18 +88,13 @@ const TripDetailView = () => {
       cell: (row) => row.company?.name ?? "-"
     },
     {
-      id: "city",
-      header: "Åehir",
-      cell: (row) => row.site?.city ?? "-"
-    },
-    {
       id: "product",
-      header: "ÃœrÃ¼n",
+      header: "Ürün",
       cell: (row) => (row.product ? `${row.product.name}${row.product.standardNo ? ` (${row.product.standardNo})` : ""}` : "-")
     },
     {
       id: "prev",
-      header: "Ã–nceki Numune",
+      header: "Önceki Numune",
       cell: (row) => (row.cp ? formatDate(row.cp.lastSampleDate) : "-")
     },
     {
@@ -109,7 +104,7 @@ const TripDetailView = () => {
     },
     {
       id: "date",
-      header: "AlÄ±m Tarihi",
+      header: "Alım Tarihi",
       cell: (row) => (row.item.sampledAt ? formatDate(row.item.sampledAt) : "-")
     },
     {
@@ -123,14 +118,14 @@ const TripDetailView = () => {
     },
     {
       id: "actions",
-      header: "Ä°ÅŸlemler",
+      header: "İşlemler",
       cell: (row) => (
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" icon={<Calendar className="h-4 w-4" />} onClick={() => openSampleModal([row.item.id])}>
-            Numune AlÄ±nma Tarihi
+            Numune Alınma Tarihi
           </Button>
           <Button size="sm" variant="ghost" icon={<Send className="h-4 w-4" />} onClick={() => handleSendToLab(row.item.id)}>
-            Laba GÃ¶nder
+            Laba Gönder
           </Button>
         </div>
       )
@@ -229,7 +224,7 @@ const TripDetailView = () => {
             SeÃ§ili {selectedItemIds.size} numune iÃ§in Tarih Gir
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedItemIds(new Set())}>
-            SeÃ§imi Temizle
+            Seçimi Temizle
           </Button>
         </div>
       </div>

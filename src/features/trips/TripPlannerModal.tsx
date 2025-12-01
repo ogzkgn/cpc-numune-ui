@@ -6,10 +6,9 @@ import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { hasSkillCoverage } from "../../utils/validation";
-import { employeeStatusLabels, employeeStatusTokens, productTypeLabels } from "../../utils/labels";
+import { employeeStatusLabels, employeeStatusTokens, getProductTypeLabel } from "../../utils/labels";
 import type { LodgingProvider, ProductType, TransportMode, TripDutyType } from "../../types";
 
 const steps = [
@@ -50,13 +49,17 @@ const TripPlannerModal = () => {
   const tripPlanner = useAppStore((state) => state.tripPlanner);
   const closeTripPlanner = useAppStore((state) => state.closeTripPlanner);
   const createTrip = useAppStore((state) => state.createTrip);
-  const companyProducts = useAppStore((state) => state.companyProducts);
+  const loadTrips = useAppStore((state) => state.loadTrips);
+  const loadProducts = useAppStore((state) => state.loadProducts);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
+  const products = useAppStore((state) => state.products);
   const employees = useAppStore((state) => state.employees);
+  const loadEmployees = useAppStore((state) => state.loadEmployees);
   const addToast = useAppStore((state) => state.addToast);
-  const { productMap, companyMap, siteMap } = useEntityMaps();
+  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
 
   const [activeStep, setActiveStep] = useState<StepId>(steps[0].id);
-  const [searchTerm, setSearchTerm] = useState("");
   const [selectedCompanyProductIds, setSelectedCompanyProductIds] = useState<number[]>([]);
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
   const [dutyConfig, setDutyConfig] = useState<Record<number, { dutyType: TripDutyType; dutyAssigneeIds: number[] }>>({});
@@ -67,6 +70,16 @@ const TripPlannerModal = () => {
   const [name, setName] = useState("");
   const [plannedBy, setPlannedBy] = useState("");
   const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (tripPlanner.open) {
+      loadProducts();
+      loadCompanyProductRecords();
+      loadTrips();
+      loadEmployees();
+    }
+  }, [tripPlanner.open, loadProducts, loadCompanyProductRecords, loadTrips, loadEmployees]);
 
   useEffect(() => {
     if (tripPlanner.open) {
@@ -81,46 +94,35 @@ const TripPlannerModal = () => {
       setName("");
       setPlannedBy("");
       setNotes("");
+
+      // Fetch latest employees when planner opens to ensure availability/status is up to date
+      loadEmployees();
     }
-  }, [tripPlanner.open, tripPlanner.selectedCompanyProductIds]);
-
-  const companyProductOptions = useMemo(() => {
-    return companyProducts
-      .map((cp) => {
-        const product = productMap.get(cp.productId);
-        const company = companyMap.get(cp.companyId);
-        if (!product || !company) return null;
-        return {
-          cp,
-          product,
-          company,
-          site: cp.siteId ? siteMap.get(cp.siteId) : undefined
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
-  }, [companyProducts, productMap, companyMap, siteMap]);
-
-  const filteredCompanyProducts = useMemo(() => {
-    if (!searchTerm) return companyProductOptions;
-    const query = searchTerm.toLowerCase();
-    return companyProductOptions.filter((item) => {
-      return (
-        item.company.name.toLowerCase().includes(query) ||
-        item.product.name.toLowerCase().includes(query) ||
-        item.product.standardNo?.toLowerCase().includes(query) ||
-        item.site?.city?.toLowerCase().includes(query)
-      );
-    });
-  }, [companyProductOptions, searchTerm]);
+  }, [tripPlanner.open, tripPlanner.selectedCompanyProductIds, loadEmployees]);
 
   const selectedProducts = useMemo(() => {
     const selectedSet = new Set(selectedCompanyProductIds);
-    return companyProductOptions.filter((item) => selectedSet.has(item.cp.id));
-  }, [selectedCompanyProductIds, companyProductOptions]);
+    return companyProductRecords
+      .map((record) => {
+        if (record.id === undefined || !selectedSet.has(record.id)) return null;
+        return {
+          id: record.id,
+          record,
+          product: record.productId ? productMap.get(record.productId) : undefined
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  }, [selectedCompanyProductIds, companyProductRecords, productMap]);
 
   const requiredProductTypes = useMemo(() => {
     const types = new Set<Requirement>();
-    selectedProducts.forEach((item) => types.add(item.product.productType));
+    selectedProducts.forEach((item) => {
+      if (item.product?.productType) {
+        types.add(item.product.productType);
+      } else if (item.record.productType) {
+        types.add(item.record.productType);
+      }
+    });
     return Array.from(types);
   }, [selectedProducts]);
 
@@ -178,7 +180,7 @@ const TripPlannerModal = () => {
 
 
   const coverageOk = selectedProducts.length === 0 || hasSkillCoverage(selectedAssignees, requiredProductTypes);
-  const canProceedStep1 = selectedCompanyProductIds.length > 0;
+  const canProceedStep1 = selectedProducts.length > 0;
   const canProceedStep2 = selectedAssigneeIds.length > 0 && coverageOk;
   const dutyConfigValid = selectedCompanyProductIds.every((id) => {
     const config = dutyConfig[id];
@@ -186,6 +188,7 @@ const TripPlannerModal = () => {
     if (!config.dutyType) return false;
     return config.dutyAssigneeIds.length > 0;
   });
+
   const isCompanyVehicle = transportMode === "COMPANY_VEHICLE";
   const transportSelected = transportMode !== "";
   const lodgingSelected = lodgingProvider !== "";
@@ -198,18 +201,6 @@ const TripPlannerModal = () => {
   const selectedLodgingLabel = lodgingProvider
     ? lodgingOptions.find((option) => option.value === lodgingProvider)?.label
     : undefined;
-
-  const handleToggleProduct = (id: number) => {
-    setSelectedCompanyProductIds((prev) => {
-      const set = new Set(prev);
-      if (set.has(id)) {
-        set.delete(id);
-      } else {
-        set.add(id);
-      }
-      return Array.from(set);
-    });
-  };
 
   const handleToggleAssignee = (id: number) => {
     setSelectedAssigneeIds((prev) => {
@@ -290,8 +281,9 @@ const TripPlannerModal = () => {
     }
   };
 
-  const handleCreateTrip = () => {
+  const handleCreateTrip = async () => {
     if (!canSubmit) return;
+    setSaving(true);
     const isoDate = plannedAt ? new Date(plannedAt).toISOString() : undefined;
     const dutiesPayload = selectedCompanyProductIds.map((companyProductId) => {
       const config = dutyConfig[companyProductId];
@@ -317,6 +309,7 @@ const TripPlannerModal = () => {
     });
 
     addToast({ title: "Seyahat planlandı", variant: "success" });
+    setSaving(false);
   };
 
   if (!tripPlanner.open) {
@@ -346,7 +339,7 @@ const TripPlannerModal = () => {
             ) : null}
           </div>
           {activeStep === "plan" ? (
-            <Button onClick={handleCreateTrip} disabled={!canSubmit}>
+            <Button onClick={handleCreateTrip} disabled={!canSubmit || saving}>
               Seyahati Oluştur
             </Button>
           ) : (
@@ -364,41 +357,42 @@ const TripPlannerModal = () => {
         <Stepper steps={steps} activeStepId={activeStep}>
         {activeStep === "items" ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Firma, ürün veya şehir ara"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-              <Badge variant="info">Seçili {selectedCompanyProductIds.length}</Badge>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-slate-600">
+                Seçilen firma-ürün kayıtlarını gözden geçirin. Düzenleme için geri dönün.
+              </p>
+              <Badge variant="info">Seçili {selectedProducts.length}</Badge>
             </div>
-            <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
-              {filteredCompanyProducts.map((item) => {
-                const selected = selectedCompanyProductIds.includes(item.cp.id);
-                return (
-                  <button
-                    key={item.cp.id}
-                    type="button"
-                    onClick={() => handleToggleProduct(item.cp.id)}
-                    className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition ${
-                      selected ? "border-brand-primary bg-brand-primary/5" : "border-slate-200 hover:border-brand-primary"
-                    }`}
+            {selectedProducts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                Seyahat oluşturmak için kayıt seçin.
+              </div>
+            ) : (
+              <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+                {selectedProducts.map((item) => (
+                  <div
+                    key={item.record.id ?? item.record.companyName}
+                    className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm"
                   >
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-slate-900">{item.company.name}</h3>
-                      <Badge variant={selected ? "success" : "neutral"}>{productTypeLabels[item.product.productType]}</Badge>
+                      <h3 className="text-sm font-semibold text-slate-900">{item.record.companyName}</h3>
+                      <Badge variant="neutral">{getProductTypeLabel(item.record.productType)}</Badge>
                     </div>
-                    <p className="text-xs text-slate-500">{item.product.name}</p>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      {item.product.standardNo ? <span>Standart: {item.product.standardNo}</span> : null}
-                      {item.site ? <span>Şehir: {item.site.city}</span> : null}
-                      <span>Son numune: {formatDate(item.cp.lastSampleDate)}</span>
+                    <p className="text-xs text-slate-600">{item.record.productName ?? item.product?.name ?? "Ürün"}</p>
+                    <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-500">
+                      <span>Ürün Kodu: {item.record.productCode ?? "-"}</span>
+                      <span>BT Kod: {item.record.btCode ?? "-"}</span>
+                      <span>Kod: {item.record.code ?? "-"}</span>
+                      <span>Standart: {item.record.standard ?? item.product?.standardNo ?? "-"}</span>
+                      <span>İl/İlçe: {item.record.location ?? "-"}</span>
+                      <span>Belge: {formatDate(item.record.certificateDate)}</span>
+                      <span>Son Numune: {formatDate(item.record.lastSampleDate)}</span>
+                      <span>Son Denetim: {formatDate(item.record.lastInspectionDate)}</span>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -410,7 +404,7 @@ const TripPlannerModal = () => {
               ) : (
                 requiredProductTypes.map((type) => (
                   <Chip key={type} active>
-                    {productTypeLabels[type]}
+                    {getProductTypeLabel(type)}
                   </Chip>
                 ))
               )}
@@ -437,7 +431,7 @@ const TripPlannerModal = () => {
                     <div className="flex flex-wrap gap-1">
                       {employee.skills.map((skill) => (
                         <Badge key={skill} variant={requiredProductTypes.includes(skill) ? "info" : "neutral"}>
-                          {productTypeLabels[skill]}
+                          {getProductTypeLabel(skill)}
                         </Badge>
                       ))}
                     </div>
@@ -557,29 +551,31 @@ const TripPlannerModal = () => {
                   </thead>
                   <tbody>
                     {selectedProducts.map((item) => {
-                      const config = dutyConfig[item.cp.id];
+                      const config = dutyConfig[item.id];
                       const assignedIds = config?.dutyAssigneeIds ?? [];
                       const rowInvalid = !config || assignedIds.length === 0;
 
                       return (
-                        <tr key={item.cp.id} className={rowInvalid ? "bg-red-50/60" : ""}>
+                        <tr key={item.id} className={rowInvalid ? "bg-red-50/60" : ""}>
                           <td className="px-3 py-3 align-top text-slate-700">
-                            <p className="text-sm font-semibold text-slate-900">{item.company.name}</p>
-                            <p className="text-xs text-slate-600">{item.product.name}</p>
+                            <p className="text-sm font-semibold text-slate-900">{item.record.companyName}</p>
+                            <p className="text-xs text-slate-600">{item.record.productName ?? item.product?.name ?? "-"}</p>
                             <div className="mt-1 text-[11px] text-slate-500">
-                              {item.product.standardNo ? <span>Standart: {item.product.standardNo}</span> : null}
-                              {item.site ? <span className="ml-2">Lokasyon: {item.site.city}</span> : null}
+                              {item.product?.standardNo || item.record.standard ? (
+                                <span>Standart: {item.record.standard ?? item.product?.standardNo}</span>
+                              ) : null}
+                              {item.record.location ? <span className="ml-2">Lokasyon: {item.record.location}</span> : null}
                             </div>
                           </td>
                           <td className="px-3 py-3 align-top text-slate-700">
-                            {item.cp.productCode ?? "-"}
+                            {item.record.productCode ?? "-"}
                           </td>
                           <td className="px-3 py-3 align-top">
                             <select
                               className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
                               value={config?.dutyType ?? "NUMUNE"}
                               onChange={(event) =>
-                                handleDutyTypeChange(item.cp.id, event.target.value as TripDutyType)
+                                handleDutyTypeChange(item.id, event.target.value as TripDutyType)
                               }
                             >
                               {dutyTypeOptions.map((option) => (
@@ -600,7 +596,7 @@ const TripPlannerModal = () => {
                                     <button
                                       key={assignee.id}
                                       type="button"
-                                      onClick={() => handleDutyAssigneeToggle(item.cp.id, assignee.id)}
+                                      onClick={() => handleDutyAssigneeToggle(item.id, assignee.id)}
                                       className={`rounded-full border px-2 py-1 text-xs transition ${
                                         active
                                           ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
@@ -638,7 +634,7 @@ const TripPlannerModal = () => {
                 <p>Firma-Ürün sayısı: {selectedProducts.length}</p>
                 <p>Atanan ekip: {selectedAssignees.map((item) => item.name).join(", ") || "Belirtilmedi"}</p>
                 <p>Ulaşım: {selectedTransportLabel ?? "Belirtilmedi"}</p>
-                {isCompanyVehicle ? <p>Ara? Plakas?: {vehiclePlate || "-"}</p> : null}
+                {isCompanyVehicle ? <p>Araç Plakası: {vehiclePlate || "-"}</p> : null}
                 <p>Konaklama: {selectedLodgingLabel ?? "Belirtilmedi"}</p>
                 <p>Planlamayı yapan: {plannedBy || "Belirtilmedi"}</p>
                 <p>Tarih: {plannedAt ? formatDate(new Date(plannedAt).toISOString()) : "Belirtilmedi"}</p>
@@ -646,7 +642,7 @@ const TripPlannerModal = () => {
                   <p className="text-[11px] font-semibold text-slate-700">Görev dağılımları:</p>
                   <ul className="space-y-1">
                     {selectedProducts.map((item) => {
-                      const config = dutyConfig[item.cp.id];
+                      const config = dutyConfig[item.id];
                       const dutyLabel = config ? dutyTypeLabels[config.dutyType] : "Belirtilmedi";
                       const teamNames =
                         config?.dutyAssigneeIds
@@ -655,9 +651,9 @@ const TripPlannerModal = () => {
                           .join(", ") ?? "";
 
                       return (
-                        <li key={item.cp.id}>
-                          {item.company.name} / {item.product.name}
-                          {item.cp.productCode ? ` [${item.cp.productCode}]` : ""}: {dutyLabel}{" "}
+                        <li key={item.id}>
+                          {item.record.companyName} / {item.record.productName ?? item.product?.name ?? "-"}
+                          {item.record.productCode ? ` [${item.record.productCode}]` : ""}: {dutyLabel}{" "}
                           {teamNames ? `(${teamNames})` : "(Ekip seçilmedi)"}
                         </li>
                       );

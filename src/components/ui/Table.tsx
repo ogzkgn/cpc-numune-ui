@@ -21,6 +21,8 @@ export interface TableProps<T> {
   selectableRows?: boolean;
   selectedRowIds?: Set<number | string>;
   onRowSelectChange?: (row: T, selected: boolean) => void;
+  containerClassName?: string;
+  tableClassName?: string;
 }
 
 const Table = <T,>({
@@ -33,11 +35,18 @@ const Table = <T,>({
   rowClassName,
   selectableRows,
   selectedRowIds,
-  onRowSelectChange
+  onRowSelectChange,
+  containerClassName,
+  tableClassName
 }: TableProps<T>) => {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <table className="min-w-full divide-y divide-slate-200">
+    <div
+      className={clsx(
+        "overflow-hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm",
+        containerClassName
+      )}
+    >
+      <table className={clsx("min-w-full divide-y divide-slate-200", tableClassName)}>
         <thead className="bg-slate-50">
           <tr>
             {selectableRows ? <th className="w-12 px-4 py-3"></th> : null}
@@ -98,6 +107,7 @@ const Table = <T,>({
                   {columns.map((column) => (
                     <td
                       key={column.id}
+                      style={column.width ? { width: column.width } : undefined}
                       className={clsx("px-4 py-3", column.className, {
                         "text-right": column.align === "right",
                         "text-center": column.align === "center"

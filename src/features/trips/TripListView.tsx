@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, CircleOff, Edit, FileText, Info, Route as RouteIcon } from "lucide-react";
 
 import Button from "../../components/ui/Button";
@@ -6,14 +6,13 @@ import Badge from "../../components/ui/Badge";
 import Modal from "../../components/ui/Modal";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { tripStatusLabels, tripStatusTokens } from "../../utils/labels";
 import { openDrivingRoute } from "../../utils/maps";
 import TripCompletionModal from "./TripCompletionModal";
 import TripCompletionSummaryModal from "./TripCompletionSummaryModal";
 import type { TableColumn } from "../../components/ui/Table";
-import type { TripStatus } from "../../types";
+import type { TripStatus, CompanyProductRecord } from "../../types";
 
 const demoRouteAddresses = [
   "Ankara Ümitköy",
@@ -45,11 +44,25 @@ const TripListView = () => {
 
   const trips = useAppStore((state) => state.trips);
   const tripItems = useAppStore((state) => state.tripItems);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
   const employees = useAppStore((state) => state.employees);
+  const loadTrips = useAppStore((state) => state.loadTrips);
+  const loadEmployees = useAppStore((state) => state.loadEmployees);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const loadTripCompletion = useAppStore((state) => state.loadTripCompletion);
   const updateTripStatus = useAppStore((state) => state.updateTripStatus);
   const updateTrip = useAppStore((state) => state.updateTrip);
   const addToast = useAppStore((state) => state.addToast);
-  const { companyProductMap, siteMap } = useEntityMaps();
+
+  useEffect(() => {
+    loadTrips();
+    loadEmployees();
+    loadCompanyProductRecords();
+  }, [loadTrips, loadEmployees, loadCompanyProductRecords]);
+
+  useEffect(() => {
+    trips.forEach((trip) => loadTripCompletion(trip.id));
+  }, [trips, loadTripCompletion]);
 
   const summaries = useMemo(() => {
     const itemsByTrip = new Map<number, typeof tripItems>();
@@ -64,11 +77,8 @@ const TripListView = () => {
       const completed = items.filter((item) => item.sampled).length;
       const cities = new Set<string>();
       items.forEach((item) => {
-        const cp = companyProductMap.get(item.companyProductId);
-        if (cp?.siteId) {
-          const site = siteMap.get(cp.siteId);
-          if (site?.city) cities.add(site.city);
-        }
+        const record = companyProductRecords.find((rec) => rec.id === item.companyProductId);
+        if (record?.location) cities.add(record.location);
       });
 
       return {
@@ -78,7 +88,7 @@ const TripListView = () => {
         cities: Array.from(cities)
       };
     });
-  }, [trips, tripItems, companyProductMap, siteMap]);
+  }, [trips, tripItems, companyProductRecords]);
 
   const filteredTrips = useMemo(() => {
     return summaries.filter((summary) => {

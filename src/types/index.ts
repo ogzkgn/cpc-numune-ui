@@ -1,4 +1,4 @@
-﻿export type ProductType = "concrete" | "cement" | "slag" | "fly_ash";
+﻿export type ProductType = string;
 
 export interface Company {
   id: number;
@@ -6,14 +6,6 @@ export interface Company {
   customerCode?: string;
 }
 
-export interface Site {
-  id: number;
-  companyId: number;
-  city: string;
-  district?: string;
-  address?: string;
-  siteCode?: string;
-}
 
 export interface Product {
   id: number;
@@ -21,6 +13,10 @@ export interface Product {
   groupName?: string;
   productType: ProductType;
   standardNo?: string;
+  requiresSampling?: boolean;
+  samplingIntervalMonths?: number;
+  labReturnDays?: number;
+  isCustom?: boolean;
 }
 
 export type CompanyProductStatus = "devam" | "iptal" | "aski" | "kesikli";
@@ -38,6 +34,27 @@ export interface CompanyProduct {
   lastInspectionDate?: string;
   status?: CompanyProductStatus;
   paymentStatus?: PaymentStatus;
+}
+
+export interface CompanyProductRecord {
+  id?: number;
+  productType: ProductType;
+  productCode?: string;
+  btCode?: string;
+  code?: string;
+  companyName: string;
+  location?: string;
+  lastSampleDate?: string;
+  lastInspectionDate?: string;
+  paymentStatus?: PaymentStatus;
+  certificateDate?: string;
+  standard?: string;
+  productName: string;
+  status: CompanyProductStatus;
+  productId?: number;
+  requiresSampling?: boolean;
+  samplingIntervalMonths?: number;
+  labReturnDays?: number;
 }
 
 export interface Lab {
@@ -112,11 +129,7 @@ export interface Trip {
 export type TripItemLabStatus = "PENDING" | "ACCEPTED" | "DRAFT" | "SUBMITTED" | "APPROVED" | "WAITING_CONFIRM";
 
 export interface LabShipmentDetails {
-  productionDate: string;
-  lastSaleDate: string;
-  storage: string;
   sealNo: string;
-  foreignMatter: string;
   weight: string;
   cpcNote?: string;
 }
@@ -151,7 +164,7 @@ export interface LabForm {
 }
 
 export interface ConfigurableCycle {
-  productType: Extract<ProductType, "slag" | "fly_ash" | "cement" | "concrete">;
+  productType: ProductType;
   months: number;
 }
 
