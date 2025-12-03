@@ -257,7 +257,7 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {enrichedEntries.map(({ entry, companyProductRecord, product, dutyType, dutyAssigneeNames, requiresSample, requiresInspection, trackingCode }) => (
+                    {enrichedEntries.map(({ entry, companyProductRecord, dutyType, dutyAssigneeNames, requiresSample, requiresInspection, trackingCode }) => (
                       <tr key={entry.tripItemId} className="align-top text-slate-700">
                         <td className="px-3 py-2">{companyProductRecord?.btCode ?? "-"}</td>
                         <td className="px-3 py-2">{companyProductRecord?.productCode ?? "-"}</td>

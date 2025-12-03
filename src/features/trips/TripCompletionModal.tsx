@@ -609,7 +609,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {entryViews.map(({ entry, product, companyProductRecord, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
+                  {entryViews.map(({ entry, companyProductRecord, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
                     <tr key={entry.tripItemId} className="align-top">
                       <td className="px-3 py-2 text-slate-700">
                         {companyProductRecord?.companyName ?? "-"}

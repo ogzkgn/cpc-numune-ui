@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Edit3, Trash2 } from "lucide-react";
+import { Edit3, Filter, RotateCw, Trash2 } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Modal from "../../components/ui/Modal";
+import Drawer from "../../components/ui/Drawer";
 import Table from "../../components/ui/Table";
+import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { paymentStatusLabels, paymentStatusTokens, getProductTypeLabel, productTypeLabels } from "../../utils/labels";
@@ -82,11 +84,62 @@ const CompanyProductList = () => {
   const addToast = useAppStore((state) => state.addToast);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [isFilterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    productTypes: [] as ProductType[],
+    city: undefined as string | undefined,
+    standardNo: undefined as string | undefined,
+    customerCode: undefined as string | undefined,
+    companyName: undefined as string | undefined,
+    productCode: undefined as string | undefined,
+    productName: undefined as string | undefined,
+    paymentStatuses: [] as PaymentStatus[],
+    lastSampleDateFrom: undefined as string | undefined,
+    lastInspectionDateFrom: undefined as string | undefined,
+    certificateDateFrom: undefined as string | undefined
+  });
+
   const [editorState, setEditorState] = useState<EditorState>(emptyEditorState);
   const [modalOpen, setModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const availableProductTypes = useMemo(() => {
+    const types = new Set<ProductType>();
+    products.forEach((product) => {
+      if (product.productType) types.add(product.productType);
+    });
+    records.forEach((record) => {
+      if (record.productType) types.add(record.productType);
+    });
+    return Array.from(types).sort((a, b) => getProductTypeLabel(a).localeCompare(getProductTypeLabel(b), "tr"));
+  }, [products, records]);
+  const uniqueCities = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => {
+      if (record.location) values.add(record.location);
+    });
+    return Array.from(values);
+  }, [records]);
+  const uniqueStandards = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => {
+      if (record.standard) values.add(record.standard);
+    });
+    return Array.from(values);
+  }, [records]);
+  const uniqueCompanies = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => values.add(record.companyName));
+    return Array.from(values);
+  }, [records]);
+  const uniqueProductNames = useMemo(() => {
+    const values = new Set<string>();
+    records.forEach((record) => {
+      if (record.productName) values.add(record.productName);
+    });
+    return Array.from(values);
+  }, [records]);
 
   useEffect(() => {
     loadProducts();
@@ -95,9 +148,50 @@ const CompanyProductList = () => {
   }, [loadProducts, loadCompanyProductRecords, loadTrips]);
 
   const filtered = useMemo(() => {
-    if (!searchTerm) return records;
+    let base = records;
+    if (filters.productTypes.length > 0) {
+      base = base.filter((record) => filters.productTypes.includes(record.productType));
+    }
+    if (filters.city) {
+      base = base.filter((record) => record.location === filters.city);
+    }
+    if (filters.standardNo) {
+      base = base.filter((record) => record.standard === filters.standardNo);
+    }
+    if (filters.customerCode) {
+      const q = filters.customerCode.toLowerCase();
+      base = base.filter((record) => (record.btCode ?? "-").toLowerCase().includes(q));
+    }
+    if (filters.companyName) {
+      const q = filters.companyName.toLowerCase();
+      base = base.filter((record) => record.companyName.toLowerCase().includes(q));
+    }
+    if (filters.productCode) {
+      const q = filters.productCode.toLowerCase();
+      base = base.filter((record) => (record.productCode ?? "-").toLowerCase().includes(q));
+    }
+    if (filters.productName) {
+      const q = filters.productName.toLowerCase();
+      base = base.filter((record) => (record.productName ?? "").toLowerCase().includes(q));
+    }
+    if (filters.paymentStatuses.length > 0) {
+      base = base.filter((record) => record.paymentStatus && filters.paymentStatuses.includes(record.paymentStatus));
+    }
+    if (filters.lastSampleDateFrom) {
+      base = base.filter((record) => !record.lastSampleDate || record.lastSampleDate >= filters.lastSampleDateFrom!);
+    }
+    if (filters.lastInspectionDateFrom) {
+      base = base.filter(
+        (record) => !record.lastInspectionDate || record.lastInspectionDate >= filters.lastInspectionDateFrom!
+      );
+    }
+    if (filters.certificateDateFrom) {
+      base = base.filter((record) => !record.certificateDate || record.certificateDate >= filters.certificateDateFrom!);
+    }
+
+    if (!searchTerm) return base;
     const query = searchTerm.toLowerCase();
-    return records.filter((record) => {
+    return base.filter((record) => {
       const haystack = [
         getProductTypeLabel(record.productType),
         record.productCode,
@@ -113,7 +207,23 @@ const CompanyProductList = () => {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [records, searchTerm]);
+  }, [records, searchTerm, filters]);
+
+  const handleResetFilters = () => {
+    setFilters({
+      productTypes: [],
+      city: undefined,
+      standardNo: undefined,
+      customerCode: undefined,
+      companyName: undefined,
+      productCode: undefined,
+      productName: undefined,
+      paymentStatuses: [],
+      lastSampleDateFrom: undefined,
+      lastInspectionDateFrom: undefined,
+      certificateDateFrom: undefined
+    });
+  };
 
   const productTypeOptions = useMemo(() => {
     const types = new Set<ProductType>();
@@ -404,9 +514,17 @@ const CompanyProductList = () => {
           <h1 className="text-2xl font-semibold text-slate-900">Firma-Ürünler</h1>
           <p className="text-sm text-slate-500">Ürün tipi bazlı yeni tablo yapısını önizleyin ve düzenleyin</p>
         </div>
-        <Button variant="ghost" onClick={openNewRecord}>
-          Yeni Kayıt
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" icon={<RotateCw className="h-4 w-4" />} onClick={handleResetFilters}>
+            Sıfırla
+          </Button>
+          <Button variant="secondary" size="sm" icon={<Filter className="h-4 w-4" />} onClick={() => setFilterOpen(true)}>
+            Filtreler
+          </Button>
+          <Button variant="ghost" onClick={openNewRecord}>
+            Yeni Kayıt
+          </Button>
+        </div>
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <input
@@ -424,6 +542,238 @@ const CompanyProductList = () => {
           tableClassName="min-w-[1200px]"
         />
       </div>
+      <Drawer open={isFilterOpen} onClose={() => setFilterOpen(false)} title="Filtreler">
+        <div className="space-y-6">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün Tipi</h3>
+            <input
+              list="recordProductTypes"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün tipi seçin veya arayın"
+              value={
+                filters.productTypes[0]
+                  ? getProductTypeLabel(filters.productTypes[0])
+                  : ""
+              }
+              onChange={(event) => {
+                const label = event.target.value;
+                const matched = availableProductTypes.find((type) => getProductTypeLabel(type) === label);
+                setFilters((prev) => ({
+                  ...prev,
+                  productTypes: matched ? [matched] : []
+                }));
+              }}
+            />
+            <datalist id="recordProductTypes">
+              {availableProductTypes.map((type) => (
+                <option key={type} value={getProductTypeLabel(type)}>
+                  {getProductTypeLabel(type)}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Şehir</h3>
+            <input
+              list="recordCityOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Şehir seçin veya arayın"
+              value={filters.city ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  city: event.target.value || undefined
+                }))
+              }
+            />
+            <datalist id="recordCityOptions">
+              {uniqueCities.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Standart</h3>
+            <input
+              list="recordStandardOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Standart seçin veya arayın"
+              value={filters.standardNo ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  standardNo: event.target.value || undefined
+                }))
+              }
+            />
+            <datalist id="recordStandardOptions">
+              {uniqueStandards.map((standard) => (
+                <option key={standard} value={standard}>
+                  {standard}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">BT Kodu</h3>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="BT-.."
+              value={filters.customerCode ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  customerCode: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Firma</h3>
+            <input
+              list="recordCompanyOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Firma seçin veya arayın"
+              value={filters.companyName ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  companyName: event.target.value || undefined
+                }))
+              }
+            />
+            <datalist id="recordCompanyOptions">
+              {uniqueCompanies.map((company) => (
+                <option key={company} value={company}>
+                  {company}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün Kodu</h3>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün kodu ara"
+              value={filters.productCode ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  productCode: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün</h3>
+            <input
+              list="recordProductNameOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün seçin veya arayın"
+              value={filters.productName ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  productName: event.target.value || undefined
+                }))
+              }
+            />
+            <datalist id="recordProductNameOptions">
+              {uniqueProductNames.map((product) => (
+                <option key={product} value={product}>
+                  {product}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ödeme Durumu</h3>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(paymentStatusLabels) as PaymentStatus[]).map((status) => {
+                const active = filters.paymentStatuses.includes(status);
+                return (
+                  <Chip
+                    key={status}
+                    active={active}
+                    className="cursor-pointer"
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        paymentStatuses: active
+                          ? prev.paymentStatuses.filter((value) => value !== status)
+                          : [...prev.paymentStatuses, status]
+                      }))
+                    }
+                  >
+                    {paymentStatusLabels[status]}
+                  </Chip>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Belge Tarihi (sonrası)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.certificateDateFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  certificateDateFrom: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Son Numune Tarihi (sonrası)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.lastSampleDateFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  lastSampleDateFrom: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Son Gözetim Tarihi (sonrası)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.lastInspectionDateFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  lastInspectionDateFrom: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="ghost" onClick={handleResetFilters}>
+              Temizle
+            </Button>
+            <Button onClick={() => setFilterOpen(false)}>Uygula</Button>
+          </div>
+        </div>
+      </Drawer>
       <Modal
         open={modalOpen}
         onClose={closeModal}
