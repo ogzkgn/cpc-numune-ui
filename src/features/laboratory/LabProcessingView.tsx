@@ -2,13 +2,16 @@
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
+import Chip from "../../components/ui/Chip";
+import Drawer from "../../components/ui/Drawer";
 import Modal from "../../components/ui/Modal";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
-import { labStatusLabels, labStatusTokens } from "../../utils/labels";
+import { labStatusLabels, labStatusTokens, getProductTypeLabel } from "../../utils/labels";
 import { SHIPMENT_FIELDS, getFieldConfig } from "./labConstants";
+import { Filter, RotateCw } from "lucide-react";
 import LabFormDetails from "./components/LabFormDetails";
 import type { TableColumn } from "../../components/ui/Table";
 import type { LabFormDocument, ProductType, TripItem } from "../../types";
@@ -30,6 +33,7 @@ type PendingEntry = {
   cpcNotes: string | undefined;
   documents: LabFormDocument[] | undefined;
   companyProductId: number;
+  location?: string;
 };
 
 const LabProcessingView = () => {
@@ -41,15 +45,26 @@ const LabProcessingView = () => {
   const loadLabItems = useAppStore((state) => state.loadLabItems);
   const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
   const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const {productMap } = useEntityMaps();
+  const { productMap } = useEntityMaps();
   const labs = useAppStore((state) => state.labs);
   const loadLabs = useAppStore((state) => state.loadLabs);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
+  const recordMap = useMemo(() => new Map(companyProductRecords.map((rec) => [rec.id, rec])), [companyProductRecords]);
 
   const [selectedItem, setSelectedItem] = useState<PendingEntry | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [labNotes, setLabNotes] = useState("");
   const [documents, setDocuments] = useState<LabFormDocument[]>([]);
+  const [isFilterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    productTypes: [] as string[],
+    companyName: undefined as string | undefined,
+    customerCode: undefined as string | undefined,
+    productName: undefined as string | undefined,
+    labId: undefined as number | undefined,
+    sentFrom: undefined as string | undefined,
+    labEntryCode: undefined as string | undefined
+  });
 
   const isLabUser = activeRole === "lab";
   const allowEdit = isLabUser;
@@ -104,7 +119,6 @@ const LabProcessingView = () => {
   };
 
   const pendingItems = useMemo<PendingEntry[]>(() => {
-    const recordMap = new Map(companyProductRecords.map((rec) => [rec.id, rec]));
     return tripItems.reduce<PendingEntry[]>((accumulator, item) => {
       if (
         !item.labSentAt ||
@@ -132,7 +146,7 @@ const LabProcessingView = () => {
         companyName: record.companyName,
         companyBtCode: record.btCode,
         productName: product.name,
-        productType: product.productType,
+        productType: record.productType ?? product.productType,
         productStandard: product.standardNo ?? record.standard,
         productCode: record.productCode,
         labId: item.labAssignedLabId,
@@ -143,7 +157,8 @@ const LabProcessingView = () => {
         labNotes: form?.labNotes,
         cpcNotes: form?.cpcNotes ?? item.labShipmentDetails?.cpcNote,
         documents: form?.documents ?? [],
-        companyProductId: record.id ?? item.companyProductId
+        companyProductId: record.id ?? item.companyProductId,
+        location: record.location
       });
 
       return accumulator;
@@ -152,7 +167,164 @@ const LabProcessingView = () => {
       const bDate = b.labSentAt ? Date.parse(b.labSentAt) : 0;
       return bDate - aDate;
     });
-  }, [tripItems, companyProductRecords, productMap, labForms]);
+  }, [tripItems, recordMap, productMap, labForms]);
+
+  const availableProductTypes = useMemo(() => {
+    const types = new Set<string>();
+    pendingItems.forEach((entry) => {
+      if (entry.productType) types.add(entry.productType);
+    });
+    return Array.from(types);
+  }, [pendingItems]);
+
+  const availableCompanies = useMemo(() => {
+    const names = new Set<string>();
+    pendingItems.forEach((entry) => {
+      if (entry.companyName) names.add(entry.companyName);
+    });
+    return Array.from(names);
+  }, [pendingItems]);
+
+  const availableProducts = useMemo(() => {
+    const names = new Set<string>();
+    pendingItems.forEach((entry) => {
+      if (entry.productName) names.add(entry.productName);
+    });
+    return Array.from(names);
+  }, [pendingItems]);
+
+  const filteredItems = useMemo(() => {
+    let base = pendingItems;
+    if (filters.productTypes.length > 0) {
+      base = base.filter((entry) => (entry.productType ? filters.productTypes.includes(entry.productType) : false));
+    }
+    if (filters.companyName) {
+      const q = filters.companyName.toLowerCase();
+      base = base.filter((entry) => entry.companyName.toLowerCase().includes(q));
+    }
+    if (filters.customerCode) {
+      const q = filters.customerCode.toLowerCase();
+      base = base.filter((entry) => (entry.companyBtCode ?? "-").toLowerCase().includes(q));
+    }
+    if (filters.productName) {
+      const q = filters.productName.toLowerCase();
+      base = base.filter((entry) => entry.productName.toLowerCase().includes(q));
+    }
+    if (filters.labId !== undefined) {
+      base = base.filter((entry) => entry.labId === filters.labId);
+    }
+    if (filters.sentFrom) {
+      const fromTimestamp = Date.parse(filters.sentFrom);
+      if (!Number.isNaN(fromTimestamp)) {
+        base = base.filter((entry) => {
+          const sentAt = entry.labSentAt ?? entry.item.sampledAt;
+          if (!sentAt) return false;
+          return Date.parse(sentAt) >= fromTimestamp;
+        });
+      }
+    }
+    if (filters.labEntryCode) {
+      const q = filters.labEntryCode.toLowerCase();
+      base = base.filter((entry) => (entry.labEntryCode ?? "-").toLowerCase().includes(q));
+    }
+    return base;
+  }, [pendingItems, filters]);
+
+  const handleResetFilters = () => {
+    setFilters({
+      productTypes: [],
+      companyName: undefined,
+      customerCode: undefined,
+      productName: undefined,
+      labId: undefined,
+      sentFrom: undefined,
+      labEntryCode: undefined
+    });
+  };
+
+  const activeChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    if (filters.productTypes[0]) {
+      const code = filters.productTypes[0];
+      chips.push({
+        key: `pt-${code}`,
+        label: getProductTypeLabel(code as any),
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            productTypes: []
+          }))
+      });
+    }
+    if (filters.companyName) {
+      chips.push({
+        key: `company-${filters.companyName}`,
+        label: `Firma: ${filters.companyName}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            companyName: undefined
+          }))
+      });
+    }
+    if (filters.customerCode) {
+      chips.push({
+        key: `bt-${filters.customerCode}`,
+        label: `BT: ${filters.customerCode}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            customerCode: undefined
+          }))
+      });
+    }
+    if (filters.productName) {
+      chips.push({
+        key: `product-${filters.productName}`,
+        label: `Ürün: ${filters.productName}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            productName: undefined
+          }))
+      });
+    }
+    if (filters.labId !== undefined) {
+      chips.push({
+        key: `lab-${filters.labId}`,
+        label: `Lab: ${labMap.get(filters.labId) ?? filters.labId}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            labId: undefined
+          }))
+      });
+    }
+    if (filters.sentFrom) {
+      const label = formatDate(`${filters.sentFrom}T00:00:00Z`);
+      chips.push({
+        key: `from-${filters.sentFrom}`,
+        label: `Gönderim: ${label}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            sentFrom: undefined
+          }))
+      });
+    }
+    if (filters.labEntryCode) {
+      chips.push({
+        key: `entry-${filters.labEntryCode}`,
+        label: `Ürün Kodu: ${filters.labEntryCode}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            labEntryCode: undefined
+          }))
+      });
+    }
+    return chips;
+  }, [filters, labMap]);
 
   useEffect(() => {
     if (!selectedItem) {
@@ -327,17 +499,192 @@ const LabProcessingView = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Laboratuvar Giden Kutusu</h1>
-        <p className="text-sm text-slate-500">Gönderilen labratuvar kayıtlarını inceleyin.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Laboratuvar Giden Kutusu</h1>
+          <p className="text-sm text-slate-500">Gönderilen labratuvar kayıtlarını inceleyin.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" icon={<RotateCw className="h-4 w-4" />} onClick={handleResetFilters}>
+            Sıfırla
+          </Button>
+          <Button variant="secondary" size="sm" icon={<Filter className="h-4 w-4" />} onClick={() => setFilterOpen(true)}>
+            Filtreler
+          </Button>
+        </div>
       </div>
+
+      {activeChips.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {activeChips.map((chip) => (
+            <Chip key={chip.key} onRemove={chip.onRemove}>
+              {chip.label}
+            </Chip>
+          ))}
+        </div>
+      ) : null}
 
       <Table
         columns={columns}
-        data={pendingItems}
+        data={filteredItems}
         keyExtractor={(row) => row.item.id}
         emptyState="Bekleyen numune bulunmuyor"
       />
+
+      <Drawer
+        open={isFilterOpen}
+        onClose={() => setFilterOpen(false)}
+        title="Filtreler"
+        footer={
+          <div className="flex justify-between gap-2">
+            <Button variant="ghost" onClick={() => { handleResetFilters(); setFilterOpen(false); }}>
+              Sıfırla
+            </Button>
+            <Button onClick={() => setFilterOpen(false)}>Uygula</Button>
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün Tipi</h3>
+            <input
+              list="processingProductTypes"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün tipi seçin veya arayın"
+              value={filters.productTypes[0] ? getProductTypeLabel(filters.productTypes[0] as any) : ""}
+              onChange={(event) => {
+                const label = event.target.value;
+                const matched = availableProductTypes.find(
+                  (type) => getProductTypeLabel(type as any) === label
+                );
+                setFilters((prev) => ({
+                  ...prev,
+                  productTypes: matched ? [matched] : []
+                }));
+              }}
+            />
+            <datalist id="processingProductTypes">
+              {availableProductTypes.map((type) => (
+                <option key={type} value={getProductTypeLabel(type as any)}>
+                  {getProductTypeLabel(type as any)}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Firma</h3>
+            <input
+              list="processingCompanyOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Firma adı"
+              value={filters.companyName ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  companyName: event.target.value || undefined
+                }))
+              }
+            />
+            <datalist id="processingCompanyOptions">
+              {availableCompanies.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">BT Kodu</h3>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="BT kodu"
+              value={filters.customerCode ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  customerCode: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün</h3>
+            <input
+              list="processingProductOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün adı"
+              value={filters.productName ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  productName: event.target.value || undefined
+                }))
+              }
+            />
+            <datalist id="processingProductOptions">
+              {availableProducts.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </datalist>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Laboratuvar</h3>
+            <select
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.labId ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  labId: event.target.value ? Number(event.target.value) : undefined
+                }))
+              }
+            >
+              <option value="">Tümü</option>
+              {labs.map((lab) => (
+                <option key={lab.id} value={lab.id}>
+                  {lab.name}
+                </option>
+              ))}
+            </select>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Ürün Kodu</h3>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Takip numarası"
+              value={filters.labEntryCode ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  labEntryCode: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Gönderim Tarihi (en erken)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.sentFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  sentFrom: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+        </div>
+      </Drawer>
 
       <Modal
         open={Boolean(selectedItem)}
@@ -422,10 +769,3 @@ const LabProcessingView = () => {
 };
 
 export default LabProcessingView;
-
-
-
-
-
-
-
