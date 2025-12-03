@@ -328,8 +328,8 @@ const LabProcessingView = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Laboratuvar İş Akışı</h1>
-        <p className="text-sm text-slate-500">Gönderilen numuneleri inceleyin, girin ve kabul edin.</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Laboratuvar Giden Kutusu</h1>
+        <p className="text-sm text-slate-500">Gönderilen labratuvar kayıtlarını inceleyin.</p>
       </div>
 
       <Table

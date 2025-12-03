@@ -306,7 +306,7 @@ const LabInboxView = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Laboratuvar Gelen Kutusu</h1>
-        <p className="text-sm text-slate-500">Sahadan gelen numuneleri izleyin ve sonuçlarını görüntüleyin.</p>
+        <p className="text-sm text-slate-500">Labratuvardan gelen raporları görüntüleyin, onaylayın, revize edin.</p>
       </div>
 
       <Table
