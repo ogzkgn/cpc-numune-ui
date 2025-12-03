@@ -512,27 +512,29 @@ const SettingsView = () => {
                 </select>
               </label>
               {productForm.requiresSampling === "yes" ? (
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  Numune Döngüsü (Ay)
-                  <input
-                    type="number"
-                    min="1"
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    value={productForm.samplingIntervalMonths}
-                    onChange={(event) => handleProductFormChange("samplingIntervalMonths", event.target.value)}
-                  />
-                </label>
+                <>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                    Numune Döngüsü (Ay)
+                    <input
+                      type="number"
+                      min="1"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      value={productForm.samplingIntervalMonths}
+                      onChange={(event) => handleProductFormChange("samplingIntervalMonths", event.target.value)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                    Laboratuvar Dönüş Tahmini (Gün)
+                    <input
+                      type="number"
+                      min="0"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      value={productForm.labReturnDays}
+                      onChange={(event) => handleProductFormChange("labReturnDays", event.target.value)}
+                    />
+                  </label>
+                </>
               ) : null}
-              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                Laboratuvar Dönüş Tahmini (Gün)
-                <input
-                  type="number"
-                  min="0"
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  value={productForm.labReturnDays}
-                  onChange={(event) => handleProductFormChange("labReturnDays", event.target.value)}
-                />
-              </label>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Standart
                 <input
