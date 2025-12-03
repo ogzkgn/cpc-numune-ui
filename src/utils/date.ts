@@ -61,7 +61,13 @@ export const calculateNextDueDate = (companyProduct: CompanyProduct, product: Pr
   const last = companyProduct.lastSampleDate ? parseISO(companyProduct.lastSampleDate) : undefined;
   if (!last) return undefined;
   const status = (companyProduct.status ?? "devam") as CompanyProductStatus;
-  const months = getSamplingIntervalMonths(product.productType, status);
+  const explicitInterval = companyProduct.samplingIntervalMonths ?? product.samplingIntervalMonths;
+  const months =
+    explicitInterval ??
+    (() => {
+      const base = getSamplingIntervalMonths(product.productType, status);
+      return base;
+    })();
   if (!months) return undefined;
   return addMonths(last, months);
 };
@@ -76,7 +82,13 @@ export const getPriorityFlag = (companyProduct: CompanyProduct, product: Product
   if (!companyProduct.lastSampleDate) return "ok";
 
   const status = (companyProduct.status ?? "devam") as CompanyProductStatus;
-  const interval = getSamplingIntervalMonths(product.productType, status);
+  const explicitInterval = companyProduct.samplingIntervalMonths ?? product.samplingIntervalMonths;
+  const interval =
+    explicitInterval ??
+    (() => {
+      const base = getSamplingIntervalMonths(product.productType, status);
+      return base;
+    })();
   if (!interval) {
     return "ok";
   }

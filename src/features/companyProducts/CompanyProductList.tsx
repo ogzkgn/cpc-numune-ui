@@ -8,6 +8,7 @@ import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { paymentStatusLabels, paymentStatusTokens, getProductTypeLabel, productTypeLabels } from "../../utils/labels";
+import { buildSampleCounts, getAnnualRequiredSampleCount } from "../../utils/samples";
 import type { TableColumn } from "../../components/ui/Table";
 import type { CompanyProductRecord, CompanyProductStatus, PaymentStatus, Product, ProductType } from "../../types";
 
@@ -71,6 +72,8 @@ const emptyEditorState: EditorState = {
 const CompanyProductList = () => {
   const records = useAppStore((state) => state.companyProductRecords);
   const products = useAppStore((state) => state.products);
+  const loadTrips = useAppStore((state) => state.loadTrips);
+  const tripItems = useAppStore((state) => state.tripItems);
   const loadProducts = useAppStore((state) => state.loadProducts);
   const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
   const addRecord = useAppStore((state) => state.addCompanyProductRecord);
@@ -88,7 +91,8 @@ const CompanyProductList = () => {
   useEffect(() => {
     loadProducts();
     loadCompanyProductRecords();
-  }, [loadProducts, loadCompanyProductRecords]);
+    loadTrips();
+  }, [loadProducts, loadCompanyProductRecords, loadTrips]);
 
   const filtered = useMemo(() => {
     if (!searchTerm) return records;
@@ -174,6 +178,10 @@ const CompanyProductList = () => {
     }));
   };
 
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const currentYear = new Date().getFullYear();
+  const sampleCounts = useMemo(() => buildSampleCounts(tripItems, currentYear), [tripItems, currentYear]);
+
   const columns: TableColumn<CompanyProductRecord>[] = [
     {
       id: "productType",
@@ -218,7 +226,14 @@ const CompanyProductList = () => {
     {
       id: "sampleCount",
       header: "Numune Sayısı",
-      cell: () => "-/-"
+      cell: (row) => {
+        if (!row.id) return "-";
+        const product = row.productId ? productMap.get(row.productId) : undefined;
+        const required = getAnnualRequiredSampleCount(row, product, row.status ?? "devam");
+        if (required === 0) return "-";
+        const taken = sampleCounts.get(row.id) ?? 0;
+        return `${taken}/${required}`;
+      }
     },
     {
       id: "paymentStatus",

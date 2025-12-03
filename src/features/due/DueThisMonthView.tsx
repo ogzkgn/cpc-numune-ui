@@ -10,7 +10,7 @@ import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate, calculateNextDueDate, getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
 import { getProductTypeLabel, paymentStatusLabels, paymentStatusTokens } from "../../utils/labels";
-import { buildAnnualSampleCounts, getRequiredSampleCount } from "../../utils/samples";
+import { buildSampleCounts, getAnnualRequiredSampleCount } from "../../utils/samples";
 import type {
   CompanyProduct,
   CompanyProductRecord,
@@ -28,11 +28,15 @@ interface Filters {
   city?: string;
   standardNo?: string;
   customerCode?: string;
-  priority?: PriorityKey;
+  samplePriority?: PriorityKey;
+  inspectionPriority?: PriorityKey;
   companyName?: string;
   productCode?: string;
   productName?: string;
   paymentStatuses: PaymentStatus[];
+  lastSampleDateFrom?: string;
+  lastInspectionDateFrom?: string;
+  certificateDateFrom?: string;
 }
 
 const defaultFilters: Filters = {
@@ -75,24 +79,22 @@ const DueThisMonthView = () => {
   const companyProductRecords = useAppStore((state) => state.companyProductRecords);
   const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
   const loadProducts = useAppStore((state) => state.loadProducts);
+  const loadTrips = useAppStore((state) => state.loadTrips);
   const products = useAppStore((state) => state.products);
   const openTripPlanner = useAppStore((state) => state.openTripPlanner);
   const addToast = useAppStore((state) => state.addToast);
   const tripItems = useAppStore((state) => state.tripItems);
-  const tripCompletions = useAppStore((state) => state.tripCompletions);
 
   useEffect(() => {
     loadProducts();
     loadCompanyProductRecords();
-  }, [loadProducts, loadCompanyProductRecords]);
+    loadTrips();
+  }, [loadProducts, loadCompanyProductRecords, loadTrips]);
 
   const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const currentYear = new Date().getFullYear();
-  const sampleCounts = useMemo(
-    () => buildAnnualSampleCounts(tripItems, tripCompletions, currentYear),
-    [tripItems, tripCompletions, currentYear]
-  );
+  const sampleCounts = useMemo(() => buildSampleCounts(tripItems, currentYear), [tripItems, currentYear]);
 
   const list = useMemo(() => {
     return companyProductRecords
@@ -108,13 +110,15 @@ const DueThisMonthView = () => {
           lastSampleDate: record.lastSampleDate,
           lastInspectionDate: record.lastInspectionDate,
           status: record.status,
-          paymentStatus: record.paymentStatus
+          paymentStatus: record.paymentStatus,
+          samplingIntervalMonths: record.samplingIntervalMonths,
+          requiresSampling: record.requiresSampling
         };
 
         const sampleCount = record.id ? sampleCounts.get(record.id) ?? 0 : 0;
         const status = (record.status ?? "devam") as CompanyProductStatus;
         if (status === "iptal" || status === "aski") return null;
-        const sampleQuota = getRequiredSampleCount(product.productType, status);
+        const sampleQuota = getAnnualRequiredSampleCount(record, product, status);
         const nextDue = calculateNextDueDate(asCompanyProduct, product);
         const priority = getPriorityFlag(asCompanyProduct, product);
         const inspectionPriority = getInspectionPriorityFlag(asCompanyProduct);
@@ -138,7 +142,7 @@ const DueThisMonthView = () => {
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .filter((item) => {
-        const { record, priority, paymentStatus } = item;
+        const { record, priority, inspectionPriority, paymentStatus } = item;
 
         if (filters.productTypes.length > 0 && !filters.productTypes.includes(record.productType)) {
           return false;
@@ -159,9 +163,8 @@ const DueThisMonthView = () => {
           return false;
         }
 
-        if (filters.priority && priority !== filters.priority) {
-          return false;
-        }
+        if (filters.samplePriority && priority !== filters.samplePriority) return false;
+        if (filters.inspectionPriority && inspectionPriority !== filters.inspectionPriority) return false;
 
         if (
           filters.companyName &&
@@ -186,6 +189,18 @@ const DueThisMonthView = () => {
 
         if (filters.paymentStatuses.length > 0 && !filters.paymentStatuses.includes(paymentStatus)) {
           return false;
+        }
+
+        if (filters.lastSampleDateFrom && record.lastSampleDate) {
+          if (record.lastSampleDate < filters.lastSampleDateFrom) return false;
+        }
+
+        if (filters.lastInspectionDateFrom && record.lastInspectionDate) {
+          if (record.lastInspectionDate < filters.lastInspectionDateFrom) return false;
+        }
+
+        if (filters.certificateDateFrom && record.certificateDate) {
+          if (record.certificateDate < filters.certificateDateFrom) return false;
         }
 
         return true;
@@ -420,9 +435,24 @@ const DueThisMonthView = () => {
             {getProductTypeLabel(type)}
           </Chip>
         ))}
-        {filters.priority ? (
-          <Chip onRemove={() => setFilters((prev) => ({ ...prev, priority: undefined }))}>
-            {priorityLabel[filters.priority]}
+        {filters.samplePriority ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, samplePriority: undefined }))}>
+            Numune - {priorityLabel[filters.samplePriority]}
+          </Chip>
+        ) : null}
+        {filters.inspectionPriority ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, inspectionPriority: undefined }))}>
+            Gözetim - {priorityLabel[filters.inspectionPriority]}
+          </Chip>
+        ) : null}
+        {filters.lastSampleDateFrom ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, lastSampleDateFrom: undefined }))}>
+            Son Numune ≥ {formatDate(filters.lastSampleDateFrom)}
+          </Chip>
+        ) : null}
+        {filters.lastInspectionDateFrom ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, lastInspectionDateFrom: undefined }))}>
+            Son Denetim ≥ {formatDate(filters.lastInspectionDateFrom)}
           </Chip>
         ) : null}
         {filters.city ? (
@@ -465,6 +495,11 @@ const DueThisMonthView = () => {
             {filters.paymentStatuses.map((status) => paymentStatusLabels[status]).join(", ")}
           </Chip>
         ) : null}
+        {filters.certificateDateFrom ? (
+          <Chip onRemove={() => setFilters((prev) => ({ ...prev, certificateDateFrom: undefined }))}>
+            Belge Tarihi ≥ {formatDate(filters.certificateDateFrom)}
+          </Chip>
+        ) : null}
       </div>
 
       <Table
@@ -486,34 +521,43 @@ const DueThisMonthView = () => {
         <div className="space-y-6">
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Ürün Tipi</h3>
-            <div className="flex flex-wrap gap-2">
-              {availableProductTypes.map((type) => {
-                const active = filters.productTypes.includes(type);
-                return (
-                  <Chip
-                    key={type}
-                    active={active}
-                    className="cursor-pointer"
-                    onClick={() =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        productTypes: active
-                          ? prev.productTypes.filter((t) => t !== type)
-                          : [...prev.productTypes, type]
-                      }))
-                    }
-                  >
-                    {getProductTypeLabel(type)}
-                  </Chip>
-                );
-              })}
-            </div>
+            <input
+              list="productTypeOptions"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün tipi seçin veya arayın"
+              value={
+                filters.productTypes[0]
+                  ? getProductTypeLabel(filters.productTypes[0])
+                  : ""
+              }
+              onChange={(event) =>
+                setFilters((prev) => {
+                  const label = event.target.value;
+                  const matched = availableProductTypes.find(
+                    (type) => getProductTypeLabel(type) === label
+                  );
+                  return {
+                    ...prev,
+                    productTypes: matched ? [matched] : []
+                  };
+                })
+              }
+            />
+            <datalist id="productTypeOptions">
+              {availableProductTypes.map((type) => (
+                <option key={type} value={getProductTypeLabel(type)}>
+                  {getProductTypeLabel(type)}
+                </option>
+              ))}
+            </datalist>
           </section>
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Şehir</h3>
-            <select
+            <input
+              list="cityOptions"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Şehir seçin veya arayın"
               value={filters.city ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -521,20 +565,22 @@ const DueThisMonthView = () => {
                   city: event.target.value || undefined
                 }))
               }
-            >
-              <option value="">Hepsi</option>
+            />
+            <datalist id="cityOptions">
               {uniqueCities.map((city) => (
                 <option key={city} value={city}>
                   {city}
                 </option>
               ))}
-            </select>
+            </datalist>
           </section>
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Standart</h3>
-            <select
+            <input
+              list="standardOptions"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Standart seçin veya arayın"
               value={filters.standardNo ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -542,14 +588,14 @@ const DueThisMonthView = () => {
                   standardNo: event.target.value || undefined
                 }))
               }
-            >
-              <option value="">Hepsi</option>
+            />
+            <datalist id="standardOptions">
               {uniqueStandards.map((standard) => (
                 <option key={standard} value={standard}>
                   {standard}
                 </option>
               ))}
-            </select>
+            </datalist>
           </section>
 
           <section className="space-y-2">
@@ -569,8 +615,10 @@ const DueThisMonthView = () => {
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Firma</h3>
-            <select
+            <input
+              list="companyOptions"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Firma seçin veya arayın"
               value={filters.companyName ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -578,14 +626,14 @@ const DueThisMonthView = () => {
                   companyName: event.target.value || undefined
                 }))
               }
-            >
-              <option value="">Hepsi</option>
+            />
+            <datalist id="companyOptions">
               {uniqueCompanies.map((company) => (
                 <option key={company} value={company}>
                   {company}
                 </option>
               ))}
-            </select>
+            </datalist>
           </section>
 
           <section className="space-y-2">
@@ -605,8 +653,10 @@ const DueThisMonthView = () => {
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Ürün</h3>
-            <select
+            <input
+              list="productNameOptions"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Ürün seçin veya arayın"
               value={filters.productName ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -614,14 +664,14 @@ const DueThisMonthView = () => {
                   productName: event.target.value || undefined
                 }))
               }
-            >
-              <option value="">Hepsi</option>
+            />
+            <datalist id="productNameOptions">
               {uniqueProductNames.map((product) => (
                 <option key={product} value={product}>
                   {product}
                 </option>
               ))}
-            </select>
+            </datalist>
           </section>
 
           <section className="space-y-2">
@@ -652,26 +702,99 @@ const DueThisMonthView = () => {
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Öncelik</h3>
-            <div className="flex gap-2">
-              {(Object.keys(priorityLabel) as PriorityKey[]).map((value) => {
-                const active = filters.priority === value;
-                return (
-                  <Chip
-                    key={value}
-                    active={active}
-                    className="cursor-pointer"
-                    onClick={() =>
-                      setFilters((prev) => ({
-                        ...prev,
-                        priority: active ? undefined : value
-                      }))
-                    }
-                  >
-                    {priorityLabel[value]}
-                  </Chip>
-                );
-              })}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 w-24">Numune</span>
+                <div className="flex gap-2">
+                  {(Object.keys(priorityLabel) as PriorityKey[]).map((value) => {
+                    const active = filters.samplePriority === value;
+                    return (
+                      <Chip
+                        key={`sampling-${value}`}
+                        active={active}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            samplePriority: active ? undefined : value
+                          }))
+                        }
+                      >
+                        {priorityLabel[value]}
+                      </Chip>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 w-24">Gözetim</span>
+                <div className="flex gap-2">
+                  {(Object.keys(priorityLabel) as PriorityKey[]).map((value) => {
+                    const active = filters.inspectionPriority === value;
+                    return (
+                      <Chip
+                        key={`inspection-${value}`}
+                        active={active}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            inspectionPriority: active ? undefined : value
+                          }))
+                        }
+                      >
+                        {priorityLabel[value]}
+                      </Chip>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Son Numune Tarihi (sonrası)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.lastSampleDateFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  lastSampleDateFrom: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Son Denetim Tarihi (sonrası)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.lastInspectionDateFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  lastInspectionDateFrom: event.target.value || undefined
+                }))
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700">Belge Tarihi (sonrası)</h3>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.certificateDateFrom ?? ""}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  certificateDateFrom: event.target.value || undefined
+                }))
+              }
+            />
           </section>
 
           <div className="flex justify-end gap-2 pt-4">
@@ -687,9 +810,6 @@ const DueThisMonthView = () => {
 };
 
 export default DueThisMonthView;
-
-
-
 
 
 

@@ -63,7 +63,7 @@ const TripPlannerModal = () => {
   const [selectedCompanyProductIds, setSelectedCompanyProductIds] = useState<number[]>([]);
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
   const [dutyConfig, setDutyConfig] = useState<Record<number, { dutyType: TripDutyType; dutyAssigneeIds: number[] }>>({});
-  const [plannedAt, setPlannedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [plannedAt, setPlannedAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [transportMode, setTransportMode] = useState<TransportMode | "">("");
   const [vehiclePlate, setVehiclePlate] = useState("");
   const [lodgingProvider, setLodgingProvider] = useState<LodgingProvider | "">("");
@@ -446,9 +446,9 @@ const TripPlannerModal = () => {
           <div className="space-y-6 pb-2">
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                Planlanan Tarih / Saat
+                Planlanan Tarih
                 <input
-                  type="datetime-local"
+                  type="date"
                   value={plannedAt}
                   onChange={(event) => setPlannedAt(event.target.value)}
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm"

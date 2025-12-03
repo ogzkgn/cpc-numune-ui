@@ -386,20 +386,30 @@ router.put("/:id/completion", async (req, res) => {
 
     // Update trip_items with completion info (sampled dates and tracking codes)
     for (const entry of entries) {
-      const companyProductId = entry.company_product_id;
+      const companyProductId = Number(entry.company_product_id);
+      if (!Number.isFinite(companyProductId)) continue;
       const performedAt = entry.performed_at ?? null;
+      const inspectedAt = entry.inspected_at ?? null;
       const trackingCode = entry.tracking_code ?? null;
-      if (companyProductId) {
-        await client.query(
-          `UPDATE trip_items
-             SET sampled = CASE WHEN $2::timestamptz IS NULL THEN sampled ELSE TRUE END,
-                 sampled_at = COALESCE($2::timestamptz, sampled_at),
-                 lab_entry_code = COALESCE($3::text, lab_entry_code),
-                 updated_at = NOW()
-           WHERE trip_id = $1 AND company_product_id = $4`,
-          [id, performedAt, trackingCode, companyProductId]
-        );
-      }
+      await client.query(
+        `UPDATE trip_items
+           SET sampled = CASE WHEN $2::timestamptz IS NULL THEN sampled ELSE TRUE END,
+               sampled_at = COALESCE($2::timestamptz, sampled_at),
+               lab_entry_code = COALESCE($3::text, lab_entry_code),
+               updated_at = NOW()
+         WHERE trip_id = $1 AND company_product_id = $4::bigint`,
+        [id, performedAt, trackingCode, companyProductId]
+      );
+
+      // Persist latest sample/inspection dates to company_products
+      await client.query(
+        `UPDATE company_products
+           SET last_sample_date = COALESCE($2::timestamptz, last_sample_date),
+               last_inspection_date = COALESCE($3::timestamptz, last_inspection_date),
+               updated_at = NOW()
+         WHERE id = $1`,
+        [companyProductId, performedAt, inspectedAt]
+      );
     }
 
     await client.query("UPDATE trips SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1", [id]);

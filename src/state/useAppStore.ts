@@ -1,6 +1,5 @@
 ﻿import { create } from "zustand";
 
-import { sites as mockSites } from "../data/mockData";
 import { generateLabEntryCode } from "../utils/samples";
 import type {
   Company,
@@ -196,7 +195,10 @@ const mapApiTripItem = (row: any): TripItem => ({
   labStatus: row.lab_status ?? row.labStatus,
   labSentAt: row.lab_sent_at ?? row.labSentAt,
   labShipmentDetails: row.lab_shipment_details ?? row.labShipmentDetails,
-  labAssignedLabId: row.lab_assigned_lab_id ?? row.labAssignedLabId,
+  labAssignedLabId: (() => {
+    const val = row.lab_assigned_lab_id ?? row.labAssignedLabId;
+    return val !== undefined && val !== null ? Number(val) : undefined;
+  })(),
   labEntryCode: row.lab_entry_code ?? row.labEntryCode
 });
 
@@ -287,7 +289,6 @@ interface AppState {
   completeTrip: (input: CompleteTripInput) => Promise<void>;
 }
 
-const cloneData = <T>(items: T[]): T[] => items.map((item) => ({ ...item }));
 
 const recalcEmployeeStatuses = (employees: Employee[], trips: Trip[]): Employee[] => {
   const busyIds = new Set<number>();
@@ -307,7 +308,6 @@ const generateId = () => Math.floor(Date.now() + Math.random() * 1000);
 
 export const useAppStore = create<AppState>((set, get) => ({
   companies: [],
-  sites: cloneData(mockSites),
   products: [],
   companyProducts: [],
   companyProductRecords: [],
@@ -437,7 +437,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ labs: Array.isArray(data) ? data.map((row) => ({ id: Number(row.id), name: row.name, city: row.city ?? undefined })) : [] });
     } catch (error) {
       console.error("Labs fetch failed.", error);
-      set({ labs: [] });
+      // Keep existing labs on failure to avoid blanking out names in UI
     }
   },
 
@@ -506,22 +506,36 @@ export const useAppStore = create<AppState>((set, get) => ({
         totalKm: completionRow.totalKm ?? completionRow.total_km ?? undefined,
         totalDays: completionRow.totalDays ?? completionRow.total_days ?? undefined,
         lodgingProvider: completionRow.lodgingProvider ?? completionRow.lodging_provider ?? undefined,
-        entries: entries.map((entry: any) => ({
-          tripItemId: Number(entry.tripItemId ?? entry.trip_item_id ?? entry.company_product_id),
-          companyProductId: Number(entry.company_product_id ?? entry.companyProductId ?? entry.tripItemId ?? entry.trip_item_id),
-          dutyType: entry.dutyType ?? entry.duty_type ?? "NUMUNE",
-          dutyAssigneeIds: (entry.dutyAssigneeIds ?? entry.duty_assignee_ids ?? []).map((v: any) => Number(v)),
-          performedAt: entry.performedAt ?? entry.performed_at ?? undefined,
-          inspectedAt: entry.inspectedAt ?? entry.inspected_at ?? undefined,
-          sampleNotCompleted: entry.sampleNotCompleted ?? entry.sample_not_completed ?? undefined,
-          inspectionNotCompleted: entry.inspectionNotCompleted ?? entry.inspection_not_completed ?? undefined,
-          trackingCode: entry.trackingCode ?? entry.tracking_code ?? undefined,
-          lodgingPaymentAmount: entry.lodgingPaymentAmount ?? entry.lodging_payment_amount ?? undefined,
-          transportExpense: entry.transportExpense ?? entry.transport_expense ?? undefined,
-          mealLunchExpense: entry.mealLunchExpense ?? entry.meal_lunch_expense ?? undefined,
-          mealDinnerExpense: entry.mealDinnerExpense ?? entry.meal_dinner_expense ?? undefined,
-          companyExpense: entry.companyExpense ?? entry.company_expense ?? undefined
-        })),
+        entries: entries.map((entry: any) => {
+          const rawTripItemId =
+            entry.tripItemId ??
+            entry.trip_item_id ??
+            entry.companyProductId ??
+            entry.company_product_id;
+          const rawCompanyProductId =
+            entry.company_product_id ??
+            entry.companyProductId ??
+            entry.tripItemId ??
+            entry.trip_item_id;
+          const companyProductId = Number(rawCompanyProductId);
+          const mappedTripItemId = Number(rawTripItemId);
+        return {
+            tripItemId: Number.isFinite(mappedTripItemId) ? mappedTripItemId : companyProductId,
+            companyProductId,
+            dutyType: entry.dutyType ?? entry.duty_type ?? "NUMUNE",
+            dutyAssigneeIds: (entry.dutyAssigneeIds ?? entry.duty_assignee_ids ?? []).map((v: any) => Number(v)),
+            performedAt: entry.performedAt ?? entry.performed_at ?? undefined,
+            inspectedAt: entry.inspectedAt ?? entry.inspected_at ?? undefined,
+            sampleNotCompleted: entry.sampleNotCompleted ?? entry.sample_not_completed ?? undefined,
+            inspectionNotCompleted: entry.inspectionNotCompleted ?? entry.inspection_not_completed ?? undefined,
+            trackingCode: entry.trackingCode ?? entry.tracking_code ?? undefined,
+            lodgingPaymentAmount: entry.lodgingPaymentAmount ?? entry.lodging_payment_amount ?? undefined,
+            transportExpense: entry.transportExpense ?? entry.transport_expense ?? undefined,
+            mealLunchExpense: entry.mealLunchExpense ?? entry.meal_lunch_expense ?? undefined,
+            mealDinnerExpense: entry.mealDinnerExpense ?? entry.meal_dinner_expense ?? undefined,
+            companyExpense: entry.companyExpense ?? entry.company_expense ?? undefined
+          };
+        }),
         createdAt: completionRow.createdAt ?? completionRow.created_at
       };
 
@@ -1246,6 +1260,60 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const trackingCodeUpdates = new Map<number, string>();
     const payloadEntries: any[] = [];
+    const baseTripItems = state.tripItems;
+
+    input.entries.forEach((entry) => {
+      const tripItem = baseTripItems.find((item) => item.id === entry.tripItemId);
+      const dutyAssignment =
+        tripItem && trip?.dutyAssignments ? trip.dutyAssignments[tripItem.companyProductId] : undefined;
+      const companyProduct = tripItem
+        ? state.companyProducts.find((product) => product.id === tripItem.companyProductId)
+        : undefined;
+
+      const dutyType: TripDutyType = entry.dutyType ?? tripItem?.dutyType ?? dutyAssignment?.dutyType ?? "NUMUNE";
+      const dutyAssigneeIds =
+        entry.dutyAssigneeIds && entry.dutyAssigneeIds.length > 0
+          ? entry.dutyAssigneeIds
+          : tripItem?.dutyAssigneeIds?.length
+            ? tripItem.dutyAssigneeIds
+            : dutyAssignment?.dutyAssigneeIds ?? [];
+      const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
+
+      let trackingCode = entry.trackingCode;
+      if (requiresSample && !entry.sampleNotCompleted && entry.performedAt) {
+        if (!trackingCode) {
+          trackingCode =
+            generateLabEntryCode({
+              productCode: companyProduct?.productCode,
+              performedAt: entry.performedAt,
+              tripItems: baseTripItems,
+              companyProductId: tripItem?.companyProductId,
+              excludeTripItemId: entry.tripItemId
+            }) ?? undefined;
+        }
+        if (trackingCode) {
+          trackingCodeUpdates.set(entry.tripItemId, trackingCode);
+        }
+      } else {
+        trackingCode = undefined;
+      }
+
+      payloadEntries.push({
+        company_product_id: tripItem?.companyProductId ?? entry.tripItemId,
+        duty_type: dutyType,
+        duty_assignee_ids: dutyAssigneeIds,
+        performed_at: entry.sampleNotCompleted ? null : entry.performedAt ?? null,
+        inspected_at: entry.inspectionNotCompleted ? null : entry.inspectedAt ?? null,
+        sample_not_completed: entry.sampleNotCompleted ?? null,
+        inspection_not_completed: entry.inspectionNotCompleted ?? null,
+        tracking_code: trackingCode ?? null,
+        lodging_payment_amount: entry.lodgingPaymentAmount ?? null,
+        transport_expense: entry.transportExpense ?? null,
+        meal_lunch_expense: entry.mealLunchExpense ?? null,
+        meal_dinner_expense: entry.mealDinnerExpense ?? null,
+        company_expense: entry.companyExpense ?? null
+      });
+    });
     
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
@@ -1299,6 +1367,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         createdAt: completion?.createdAt ?? completion?.created_at ?? timestamp
       };
 
+      mappedCompletion.entries.forEach((entry) => {
+        if (entry.trackingCode) {
+          trackingCodeUpdates.set(entry.tripItemId, entry.trackingCode);
+        }
+      });
+
       // Local side effects similar to previous logic
       const sampleTripItemUpdates = new Map<number, string>();
       const inspectionDateUpdates = new Map<number, string>();
@@ -1347,6 +1421,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           ...(inspectedAt ? { lastInspectionDate: inspectedAt } : {})
         };
       });
+      const updatedCompanyProductRecords = state.companyProductRecords.map((record) => {
+        const performedAt = companyProductDateUpdates.get(record.id ?? -1);
+        const inspectedAt = inspectionDateUpdates.get(record.id ?? -1);
+        if (!performedAt && !inspectedAt) return record;
+        return {
+          ...record,
+          ...(performedAt ? { lastSampleDate: performedAt } : {}),
+          ...(inspectedAt ? { lastInspectionDate: inspectedAt } : {})
+        };
+      });
 
       const updatedTrips = state.trips.map((t) =>
         t.id === input.tripId
@@ -1365,6 +1449,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         trips: updatedTrips,
         tripItems: updatedTripItems,
         companyProducts: updatedCompanyProducts,
+        companyProductRecords: updatedCompanyProductRecords,
         employees: recalcEmployeeStatuses(state.employees, updatedTrips)
       }));
     } catch (error) {
@@ -1374,7 +1459,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const baseTripItemsFallback = localState.tripItems;
         const tripFallback = localState.trips.find((entry) => entry.id === input.tripId);
 
-        const trackingCodeUpdatesFallback = new Map<number, string>();
+      const trackingCodeUpdatesFallback = new Map<number, string>();
 
         const normalizedEntries: TripCompletionEntry[] = input.entries.map((entry) => {
           const tripItem = baseTripItemsFallback.find((item) => item.id === entry.tripItemId);
@@ -1401,6 +1486,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   productCode: companyProduct?.productCode,
                   performedAt: entry.performedAt,
                   tripItems: baseTripItemsFallback,
+                  companyProductId: tripItem?.companyProductId,
                   excludeTripItemId: entry.tripItemId
                 }) ?? undefined;
             }
@@ -1488,6 +1574,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             ...(inspectedAt ? { lastInspectionDate: inspectedAt } : {})
           };
         });
+        const updatedCompanyProductRecords = localState.companyProductRecords.map((record) => {
+          const performedAt = companyProductDateUpdates.get(record.id ?? -1);
+          const inspectedAt = inspectionDateUpdates.get(record.id ?? -1);
+          if (!performedAt && !inspectedAt) return record;
+          return {
+            ...record,
+            ...(performedAt ? { lastSampleDate: performedAt } : {}),
+            ...(inspectedAt ? { lastInspectionDate: inspectedAt } : {})
+          };
+        });
 
         const updatedTrips = localState.trips.map((tripEntry) =>
           tripEntry.id === input.tripId
@@ -1503,6 +1599,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           trips: updatedTrips,
           tripItems: updatedTripItems,
           companyProducts: updatedCompanyProducts,
+          companyProductRecords: updatedCompanyProductRecords,
           employees: recalcEmployeeStatuses(localState.employees, updatedTrips)
         };
       });

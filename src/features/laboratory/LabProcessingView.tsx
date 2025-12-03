@@ -24,6 +24,7 @@ type PendingEntry = {
   labId: number | undefined;
   labEntryCode: string | undefined;
   labSentAt: string | undefined;
+  labReturnDays: number | undefined;
   labFormData: Record<string, unknown> | undefined;
   labNotes: string | undefined;
   cpcNotes: string | undefined;
@@ -42,6 +43,7 @@ const LabProcessingView = () => {
   const companyProductRecords = useAppStore((state) => state.companyProductRecords);
   const {productMap } = useEntityMaps();
   const labs = useAppStore((state) => state.labs);
+  const loadLabs = useAppStore((state) => state.loadLabs);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
 
   const [selectedItem, setSelectedItem] = useState<PendingEntry | null>(null);
@@ -120,7 +122,8 @@ const LabProcessingView = () => {
         id: record.productId ?? item.companyProductId,
         name: record.productName,
         productType: record.productType,
-        standardNo: record.standard
+        standardNo: record.standard,
+        labReturnDays: record.labReturnDays
       };
       const form = labForms.find((lab) => lab.tripItemId === item.id);
 
@@ -135,6 +138,7 @@ const LabProcessingView = () => {
         labId: item.labAssignedLabId,
         labEntryCode: item.labEntryCode,
         labSentAt: item.labSentAt ?? item.sampledAt,
+        labReturnDays: record.labReturnDays ?? product.labReturnDays,
         labFormData: form?.data,
         labNotes: form?.labNotes,
         cpcNotes: form?.cpcNotes ?? item.labShipmentDetails?.cpcNote,
@@ -208,7 +212,7 @@ const LabProcessingView = () => {
         const baseDate = row.labSentAt ?? row.item.sampledAt;
         if (!baseDate) return "-";
         const date = new Date(baseDate);
-        const additionalDays = row.productType === "fly_ash" ? 90 : 28;
+        const additionalDays = row.labReturnDays ?? (row.productType === "fly_ash" ? 90 : 28);
         date.setDate(date.getDate() + additionalDays);
         return formatDate(date.toISOString());
       }
@@ -246,7 +250,8 @@ const LabProcessingView = () => {
   useEffect(() => {
     loadLabItems("processing");
     loadCompanyProductRecords();
-  }, [loadLabItems, loadCompanyProductRecords]);
+    loadLabs();
+  }, [loadLabItems, loadCompanyProductRecords, loadLabs]);
 
   const canSubmit =
     allowEdit &&

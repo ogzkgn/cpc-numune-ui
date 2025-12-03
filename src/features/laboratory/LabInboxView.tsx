@@ -18,6 +18,7 @@ const LabInboxView = () => {
   const trips = useAppStore((state) => state.trips);
   const labForms = useAppStore((state) => state.labForms);
   const labs = useAppStore((state) => state.labs);
+  const loadLabs = useAppStore((state) => state.loadLabs);
   const activeRole = useAppStore((state) => state.activeRole);
   const upsertLabForm = useAppStore((state) => state.upsertLabForm);
   const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
@@ -154,7 +155,8 @@ const LabInboxView = () => {
   useEffect(() => {
     loadLabItems("inbox");
     loadCompanyProductRecords();
-  }, [loadLabItems, loadCompanyProductRecords]);
+    loadLabs();
+  }, [loadLabItems, loadCompanyProductRecords, loadLabs]);
 
   useEffect(() => {
     setIsEditingRevision(false);

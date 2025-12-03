@@ -5,6 +5,7 @@ import Button from "../../components/ui/Button";
 import { useAppStore } from "../../state/useAppStore";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { generateLabEntryCode } from "../../utils/samples";
+import { getProductTypeLabel } from "../../utils/labels";
 import type {
   LodgingProvider,
   TransportMode,
@@ -366,6 +367,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
               productCode: record?.productCode,
               performedAt: entry.performedAt,
               tripItems,
+              companyProductId: tripItem?.companyProductId,
               excludeTripItemId: entry.tripItemId
             }) ?? undefined
           : undefined);
@@ -594,7 +596,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                     <th className="px-3 py-2">Firma / Tesis</th>
                     <th className="px-3 py-2">Ürün Kodu</th>
                     <th className="px-3 py-2">İlçe / İl</th>
-                    <th className="px-3 py-2">Kapsam</th>
+                    <th className="px-3 py-2">Ürün Tipi</th>
                     <th className="px-3 py-2">Görev Bilgisi</th>
                     <th className="px-3 py-2">Numune Tarihi</th>
                     <th className="px-3 py-2">Takip No</th>
@@ -620,7 +622,9 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                         {companyProductRecord?.location ?? "-"}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        {product?.groupName ?? product?.productType ?? companyProductRecord?.productType ?? "-"}
+                        {companyProductRecord?.productType
+                          ? getProductTypeLabel(companyProductRecord.productType)
+                          : "-"}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-col gap-1">

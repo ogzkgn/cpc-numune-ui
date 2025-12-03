@@ -20,7 +20,7 @@ export interface Product {
 }
 
 export type CompanyProductStatus = "devam" | "iptal" | "aski" | "kesikli";
-export type PaymentStatus = "yapti" | "yapmadi" | "muaf";
+export type PaymentStatus = "yapti" | "yapmadi" | "istisna";
 
 export interface CompanyProduct {
   id: number;
@@ -34,6 +34,9 @@ export interface CompanyProduct {
   lastInspectionDate?: string;
   status?: CompanyProductStatus;
   paymentStatus?: PaymentStatus;
+  requiresSampling?: boolean;
+  samplingIntervalMonths?: number;
+  labReturnDays?: number;
 }
 
 export interface CompanyProductRecord {
@@ -70,6 +73,7 @@ export type TripDutyType = "GÖZETİM" | "NUMUNE" | "BOTH";
 
 export interface TripCompletionEntry {
   tripItemId: number;
+  companyProductId?: number;
   dutyType: TripDutyType;
   dutyAssigneeIds: number[];
   performedAt?: string;

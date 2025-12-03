@@ -71,21 +71,14 @@ const TripListView = () => {
       list.push(item);
       itemsByTrip.set(item.tripId, list);
     });
-
     return trips.map((trip) => {
       const items = itemsByTrip.get(trip.id) ?? [];
       const completed = items.filter((item) => item.sampled).length;
-      const cities = new Set<string>();
-      items.forEach((item) => {
-        const record = companyProductRecords.find((rec) => rec.id === item.companyProductId);
-        if (record?.location) cities.add(record.location);
-      });
 
       return {
         trip,
         items,
-        completed,
-        cities: Array.from(cities)
+        completed
       };
     });
   }, [trips, tripItems, companyProductRecords]);
@@ -121,7 +114,7 @@ const TripListView = () => {
     if (!trip) return;
     setEditingTripId(tripId);
     setEditName(trip.name ?? "");
-    setEditPlannedAt(trip.plannedAt ? trip.plannedAt.slice(0, 16) : new Date().toISOString().slice(0, 16));
+    setEditPlannedAt(trip.plannedAt ? trip.plannedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
     setEditNotes(trip.notes ?? "");
   };
 
@@ -164,12 +157,7 @@ const TripListView = () => {
         </div>
       )
     },
-    
-    {
-      id: "city",
-      header: "Şehir",
-      cell: (row) => (row.cities.length > 0 ? row.cities.join(", ") : "-")
-    },
+
     {
       id: "actions",
       header: "İşlemler",
@@ -341,9 +329,9 @@ const TripListView = () => {
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-            Planlanan Tarih / Saat
+            Planlanan Tarih
             <input
-              type="datetime-local"
+              type="date"
               value={editPlannedAt}
               onChange={(event) => setEditPlannedAt(event.target.value)}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"

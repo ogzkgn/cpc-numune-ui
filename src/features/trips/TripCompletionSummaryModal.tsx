@@ -5,6 +5,7 @@ import Badge from "../../components/ui/Badge";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { generateLabEntryCode } from "../../utils/samples";
+import { getProductTypeLabel } from "../../utils/labels";
 import type { TripCompletion, TripDutyType, CompanyProductRecord } from "../../types";
 
 const transportLabels: Record<TripCompletion["transportMode"], string> = {
@@ -82,14 +83,18 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
       .map((id) => employees.find((employee) => employee.id === id)?.name)
       .filter((value): value is string => Boolean(value)) ?? [];
 
+  const recordMap = new Map<number, CompanyProductRecord>();
+  companyProductRecords.forEach((rec) => {
+    if (rec.id !== undefined) recordMap.set(Number(rec.id), rec);
+  });
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
   const enrichedEntries =
     completion?.entries.map((entry) => {
       const tripItem = tripItems.find((item) => item.id === entry.tripItemId);
       const companyProductId = tripItem?.companyProductId ?? (entry as any).companyProductId ?? entry.tripItemId;
-      const record: CompanyProductRecord | undefined = companyProductRecords.find(
-        (rec) => rec.id === companyProductId
-      );
-      const product = record?.productId ? products.find((p) => p.id === record.productId) : undefined;
+      const record = recordMap.get(companyProductId);
+      const product = record?.productId ? productMap.get(record.productId) : undefined;
       const dutyType: TripDutyType = entry.dutyType ?? tripItem?.dutyType ?? "NUMUNE";
       const dutyAssigneeIds =
         entry.dutyAssigneeIds && entry.dutyAssigneeIds.length > 0
@@ -239,7 +244,7 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
                     <th className="px-3 py-2">Belge Tarihi</th>
                     <th className="px-3 py-2">Firma / Tesis</th>
                     <th className="px-3 py-2">İlçe / İl</th>
-                    <th className="px-3 py-2">Kapsam</th>
+                    <th className="px-3 py-2">Ürün Tipi</th>
                       <th className="px-3 py-2">Görev Bilgisi</th>
                       <th className="px-3 py-2">Numune Tarihi</th>
                       <th className="px-3 py-2">Gözetim Tarihi</th>
@@ -262,7 +267,11 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
                           {companyProductRecord?.location ? ` / ${companyProductRecord.location}` : ""}
                         </td>
                         <td className="px-3 py-2">{companyProductRecord?.location ?? "-"}</td>
-                        <td className="px-3 py-2">{product?.groupName ?? product?.productType ?? companyProductRecord?.productType ?? "-"}</td>
+                        <td className="px-3 py-2">
+                          {companyProductRecord?.productType
+                            ? getProductTypeLabel(companyProductRecord.productType)
+                            : "-"}
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-col gap-1">
                             <span className="text-sm font-semibold text-slate-800">{dutyTypeLabels[dutyType]}</span>

@@ -64,11 +64,11 @@ export const employeeStatusTokens: Record<EmployeeStatus, string> = {
 export const paymentStatusLabels: Record<PaymentStatus, string> = {
   yapti: "Yaptı",
   yapmadi: "Yapmadı",
-  muaf: "Muaf"
+  istisna: "İstisna"
 };
 
 export const paymentStatusTokens: Record<PaymentStatus, string> = {
   yapti: "bg-green-100 text-green-700",
   yapmadi: "bg-red-100 text-red-700",
-  muaf: "bg-slate-200 text-slate-700"
+  istisna: "bg-slate-200 text-slate-700"
 };
