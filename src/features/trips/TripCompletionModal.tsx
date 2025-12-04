@@ -230,6 +230,8 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     setError(null);
   };
 
+  const toDateInputValue = (value: string) => (value ? value.split("T")[0] : "");
+
   const parseAmount = (value: string) => {
     if (!value) return undefined;
     const parsed = Number(value.replace(",", "."));
@@ -650,7 +652,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                             <input
                               type="date"
                               className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                              value={entry.performedAt}
+                              value={toDateInputValue(entry.performedAt)}
                               disabled={entry.sampleNotCompleted}
                               onChange={(event) =>
                                 handleEntryChange(entry.tripItemId, "performedAt", event.target.value)
@@ -692,7 +694,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                             <input
                               type="date"
                               className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                              value={entry.inspectionDate}
+                              value={toDateInputValue(entry.inspectionDate)}
                               disabled={entry.inspectionNotCompleted}
                               onChange={(event) =>
                                 handleEntryChange(entry.tripItemId, "inspectionDate", event.target.value)

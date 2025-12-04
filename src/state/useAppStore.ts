@@ -166,7 +166,25 @@ const mapApiLabForm = (row: any): LabForm => ({
   data: row.data ?? {},
   labNotes: row.lab_notes ?? row.labNotes,
   cpcNotes: row.cpc_notes ?? row.cpcNotes,
-  documents: row.documents ?? undefined,
+  documents: Array.isArray(row.documents)
+    ? row.documents.map((doc: any) => {
+        const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+        const rawUrl = doc.url ?? doc.downloadUrl ?? undefined;
+        const fullUrl =
+          typeof rawUrl === "string" && rawUrl.startsWith("/")
+            ? `${baseUrl}${rawUrl}`
+            : rawUrl;
+        return {
+          id: doc.id ?? doc.filename ?? crypto.randomUUID(),
+          name: doc.name ?? doc.filename ?? "document",
+          size: Number(doc.size ?? 0),
+          type: doc.type ?? doc.mimetype,
+          uploadedAt: doc.uploadedAt ?? new Date().toISOString(),
+          url: fullUrl,
+          dataUrl: doc.dataUrl
+        };
+      })
+    : undefined,
   updatedAt: row.updated_at ?? row.updatedAt ?? undefined
 });
 
@@ -1122,20 +1140,63 @@ export const useAppStore = create<AppState>((set, get) => ({
     let savedForm: LabForm | undefined;
 
     try {
-      const response = await fetch(`${baseUrl}/lab-forms/${tripItemId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          standard_no: standardNo,
-          data,
-          lab_notes: labNotes,
-          cpc_notes: cpcNotes,
-          documents: documents?.map((doc) => ({ ...doc }))
-        })
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      savedForm = mapApiLabForm(await response.json());
+      const hasFiles = documents?.some((doc) => Boolean(doc.dataUrl) || Boolean((doc as any).file));
+      if (hasFiles) {
+        const formData = new FormData();
+        formData.append("status", status);
+        if (standardNo) formData.append("standard_no", standardNo);
+        formData.append("data", JSON.stringify(data ?? {}));
+        if (labNotes) formData.append("lab_notes", labNotes);
+        if (cpcNotes) formData.append("cpc_notes", cpcNotes);
+
+        const existingDocs: LabFormDocument[] = [];
+        const dataUrlToBlob = (value: string, fallbackType?: string) => {
+          const [meta, payload] = value.split(",");
+          const mimeMatch = meta.match(/data:(.*?);/);
+          const mime = mimeMatch?.[1] ?? fallbackType ?? "application/octet-stream";
+          const binary = atob(payload ?? "");
+          const len = binary.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i += 1) bytes[i] = binary.charCodeAt(i);
+          return new Blob([bytes], { type: mime });
+        };
+
+        (documents ?? []).forEach((doc) => {
+          const maybeFile = (doc as any).file as File | undefined;
+          if (maybeFile) {
+            formData.append("files", maybeFile, maybeFile.name);
+          } else if (doc.dataUrl) {
+            const blob = dataUrlToBlob(doc.dataUrl, doc.type);
+            formData.append("files", blob, doc.name || doc.id || "document");
+          } else {
+            existingDocs.push(doc);
+          }
+        });
+
+        formData.append("documents", JSON.stringify(existingDocs));
+
+        const response = await fetch(`${baseUrl}/lab-forms/${tripItemId}/upload`, {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        savedForm = mapApiLabForm(await response.json());
+      } else {
+        const response = await fetch(`${baseUrl}/lab-forms/${tripItemId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            standard_no: standardNo,
+            data,
+            lab_notes: labNotes,
+            cpc_notes: cpcNotes,
+            documents: documents?.map((doc) => ({ ...doc }))
+          })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        savedForm = mapApiLabForm(await response.json());
+      }
     } catch (error) {
       console.error("Lab form API call failed, falling back to local update.", error);
     }

@@ -94,16 +94,17 @@ const LabProcessingView = () => {
     }
 
     try {
-      const newDocuments = await Promise.all(
-        files.map(async (file) => ({
-          id: createDocumentId(),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          uploadedAt: new Date().toISOString(),
-          dataUrl: await readFileAsDataUrl(file)
-        }))
-      );
+          const newDocuments = await Promise.all(
+            files.map(async (file) => ({
+              id: createDocumentId(),
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              uploadedAt: new Date().toISOString(),
+              dataUrl: await readFileAsDataUrl(file),
+              file
+            }))
+          );
       setDocuments((prev) => [...prev, ...newDocuments]);
     } catch {
       addToast({

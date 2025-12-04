@@ -191,4 +191,5 @@ export interface LabFormDocument {
   uploadedAt: string;
   dataUrl?: string;
   url?: string;
+  file?: File;
 }
