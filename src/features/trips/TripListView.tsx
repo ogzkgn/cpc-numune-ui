@@ -14,13 +14,6 @@ import TripCompletionSummaryModal from "./TripCompletionSummaryModal";
 import type { TableColumn } from "../../components/ui/Table";
 import type { TripStatus } from "../../types";
 
-const demoRouteAddresses = [
-  "Ankara Ümitköy",
-  "Gaziantep",
-  "Kahramanmaraş",
-  "Osmaniye",
-  "Antalya"
-];
 interface TripFilters {
   status: "ALL" | TripStatus;
   assigneeId?: number;
@@ -31,6 +24,8 @@ interface TripFilters {
 const defaultFilters: TripFilters = {
   status: "ALL"
 };
+
+const START_ADDRESS = "Mutlukent, 1991. Sk. No:8, 06800 Çankaya/Ankara";
 
 const TripListView = () => {
   const [filters, setFilters] = useState<TripFilters>(defaultFilters);
@@ -63,6 +58,18 @@ const TripListView = () => {
   useEffect(() => {
     trips.forEach((trip) => loadTripCompletion(trip.id));
   }, [trips, loadTripCompletion]);
+
+  const locationByCompanyProductId = useMemo(() => {
+    const map = new Map<number, string>();
+    companyProductRecords.forEach((rec) => {
+      if (rec.id === undefined) return;
+      const location = rec.location?.trim();
+      if (location) {
+        map.set(rec.id, location);
+      }
+    });
+    return map;
+  }, [companyProductRecords]);
 
   const summaries = useMemo(() => {
     const itemsByTrip = new Map<number, typeof tripItems>();
@@ -105,8 +112,38 @@ const TripListView = () => {
     });
   }, [summaries, filters]);
 
-  const handleOpenRoute = () => {
-    openDrivingRoute(demoRouteAddresses);
+  const handleOpenRoute = (summary: (typeof filteredTrips)[number]) => {
+    const seen = new Set<string>();
+    const addresses: string[] = [];
+
+    const addLocation = (location?: string) => {
+      const trimmed = location?.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        addresses.push(trimmed);
+      }
+    };
+
+    addLocation(START_ADDRESS);
+
+    const relatedItems = tripItems.filter((item) => item.tripId === summary.trip.id);
+    relatedItems.forEach((item) => addLocation(locationByCompanyProductId.get(item.companyProductId)));
+
+    if (summary.trip.dutyAssignments) {
+      Object.keys(summary.trip.dutyAssignments).forEach((key) => {
+        const companyProductId = Number(key);
+        addLocation(locationByCompanyProductId.get(companyProductId));
+      });
+    }
+
+    if (!addresses.length) {
+      addToast({ title: "Rota oluşturmak için konum bulunamadı", variant: "info" });
+      return;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log("[route] opening with addresses", addresses);
+    openDrivingRoute(addresses);
   };
 
   const handleOpenEdit = (tripId: number) => {
@@ -184,7 +221,7 @@ const TripListView = () => {
             </div>
           ) : (
             <>
-              <Button size="sm" variant="ghost" icon={<RouteIcon className="h-4 w-4" />} onClick={handleOpenRoute}>
+              <Button size="sm" variant="ghost" icon={<RouteIcon className="h-4 w-4" />} onClick={() => handleOpenRoute(row)}>
                 Rota
               </Button>
               <Button size="sm" variant="ghost" icon={<Edit className="h-4 w-4" />} onClick={() => handleOpenEdit(row.trip.id)}>

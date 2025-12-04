@@ -128,7 +128,6 @@ const DashboardOverview = () => {
     </div>
   );
 
-  const labTotal = metrics.labCounts.sentToLab + metrics.labCounts.waitingReturn;
 
   const YearStat = ({
     label,

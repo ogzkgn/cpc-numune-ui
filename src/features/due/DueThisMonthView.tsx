@@ -404,9 +404,9 @@ const DueThisMonthView = () => {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Vade Takibi ve Planlama</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Numune ve Gözetim Planlama</h1>
           <p className="text-sm text-slate-500">
-                        Vadesi yaklaşan ve geciken firma-ürün takip ve planlama ekranı
+                        Numune, gözetim takip ve planlama ekranı
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
