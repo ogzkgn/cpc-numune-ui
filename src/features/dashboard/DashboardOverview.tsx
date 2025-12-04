@@ -1,224 +1,245 @@
-﻿import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
-import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import Table from "../../components/ui/Table";
-import Badge from "../../components/ui/Badge";
-import type { BadgeVariant } from "../../components/ui/Badge";
+import { AlertTriangle, Clock4, FlaskRound, SendHorizonal, ShieldAlert } from "lucide-react";
 import { useAppStore } from "../../state/useAppStore";
-import { formatDate, getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
+import { getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
 import { useEntityMaps } from "../../hooks/useEntityMaps";
-import type { TableColumn } from "../../components/ui/Table";
 import type { CompanyProduct } from "../../types";
-import type { PriorityFlag } from "../../utils/date";
-
-type PrioritizedItem = {
-  cp: CompanyProduct;
-  samplePriority: ReturnType<typeof getPriorityFlag>;
-  inspectionPriority: ReturnType<typeof getInspectionPriorityFlag>;
-  score: number;
-};
 
 const DashboardOverview = () => {
-  const { productMap, companyMap } = useEntityMaps();
   const companyProducts = useAppStore((state) => state.companyProducts);
-  const tripItems = useAppStore((state) => state.tripItems);
+  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
+  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
+  const loadProducts = useAppStore((state) => state.loadProducts);
   const trips = useAppStore((state) => state.trips);
-  const labForms = useAppStore((state) => state.labForms);
-  const addToast = useAppStore((state) => state.addToast);
+  const tripCompletions = useAppStore((state) => state.tripCompletions);
+  const tripItems = useAppStore((state) => state.tripItems);
+  const loadTrips = useAppStore((state) => state.loadTrips);
+  const loadTripCompletion = useAppStore((state) => state.loadTripCompletion);
+  const { productMap } = useEntityMaps();
+
+  useEffect(() => {
+    loadProducts();
+    loadCompanyProductRecords();
+    loadTrips();
+    // load all trip completions in background
+    trips.forEach((trip) => loadTripCompletion(trip.id));
+  }, [loadProducts, loadCompanyProductRecords, loadTrips, loadTripCompletion, trips]);
 
   const metrics = useMemo(() => {
-    const dueConcrete = companyProducts.filter((cp) => {
-      const product = productMap.get(cp.productId);
-      return product?.productType === "concrete" && getPriorityFlag(cp, product) !== "ok";
-    }).length;
+    const sourceRecords = companyProductRecords.length > 0 ? companyProductRecords : companyProducts;
 
-    const dueCement = companyProducts.filter((cp) => {
-      const product = productMap.get(cp.productId);
-      return product?.productType === "cement" && getPriorityFlag(cp, product) !== "ok";
-    }).length;
-
-    const activeTrips = trips.filter((trip) => trip.status === "ACTIVE").length;
-
-    const samplesInLab = {
-      pending: tripItems.filter(
-        (item) =>
-          item.labStatus === "PENDING" ||
-          item.labStatus === "ACCEPTED" ||
-          item.labStatus === "WAITING_CONFIRM"
-      ).length,
-      draft: tripItems.filter((item) => item.labStatus === "DRAFT").length,
-      submitted: tripItems.filter((item) => item.labStatus === "SUBMITTED").length
-    };
-
-    const avgTurnaround = labForms.length ? 6.2 : 0;
-
-    const topPrioritized = [...companyProducts]
-      .map<PrioritizedItem | null>((cp) => {
-        const product = productMap.get(cp.productId);
+    const activeRecords = sourceRecords
+      .map((rec) => {
+        const status = rec.status ?? "devam";
+        if (status === "iptal" || status === "aski") return null;
+        const product =
+          rec.productId && productMap.has(rec.productId) ? productMap.get(rec.productId) : undefined;
         if (!product) return null;
-        const samplePriority = getPriorityFlag(cp, product);
-        const inspectionPriority = getInspectionPriorityFlag(cp);
-        const score =
-          (samplePriority === "overdue" ? 3 : samplePriority === "approaching" ? 1 : 0) +
-          (inspectionPriority === "overdue" ? 3 : inspectionPriority === "approaching" ? 1 : 0);
-        return {
-          cp,
-          samplePriority,
-          inspectionPriority,
-          score
+
+        const asCompanyProduct: CompanyProduct = {
+          id: rec.id ?? 0,
+          companyId: 0,
+          productId: rec.productId ?? 0,
+          productCode: rec.productCode,
+          lastSampleDate: rec.lastSampleDate,
+          lastInspectionDate: rec.lastInspectionDate,
+          status,
+          samplingIntervalMonths: rec.samplingIntervalMonths,
+          requiresSampling: rec.requiresSampling,
+          labReturnDays: rec.labReturnDays,
+          paymentStatus: rec.paymentStatus
         };
+
+        return { rec, product, asCompanyProduct };
       })
-      .filter((item): item is PrioritizedItem => item !== null)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
+      .filter((item): item is { rec: typeof sourceRecords[number]; product: any; asCompanyProduct: CompanyProduct } =>
+        Boolean(item)
+      );
+
+    const currentYear = new Date().getFullYear();
+
+    const countBySamplePriority = (target: "approaching" | "overdue") =>
+      activeRecords.reduce((acc, item) => {
+        return getPriorityFlag(item.asCompanyProduct, item.product) === target ? acc + 1 : acc;
+      }, 0);
+
+    const countByInspectionPriority = (target: "approaching" | "overdue") =>
+      activeRecords.reduce((acc, item) => {
+        return getInspectionPriorityFlag(item.asCompanyProduct) === target ? acc + 1 : acc;
+      }, 0);
+
+    const completedSamplesYtd = tripCompletions.reduce((acc, completion) => {
+      const count = completion.entries.filter(
+        (entry) => entry.performedAt && entry.sampleNotCompleted !== true && new Date(entry.performedAt).getFullYear() === currentYear
+      ).length;
+      return acc + count;
+    }, 0);
+
+    const completedInspectionsYtd = tripCompletions.reduce((acc, completion) => {
+      const count = completion.entries.filter(
+        (entry) => entry.inspectedAt && entry.inspectionNotCompleted !== true && new Date(entry.inspectedAt).getFullYear() === currentYear
+      ).length;
+      return acc + count;
+    }, 0);
+
+    const completedTrips = trips.filter((trip) => trip.status === "COMPLETED").length;
+
+    const labCounts = {
+      sentToLab: tripItems.filter((item) => item.labStatus === "SUBMITTED").length,
+      waitingReturn: tripItems.filter(
+        (item) =>
+          item.labStatus === "WAITING_CONFIRM" ||
+          item.labStatus === "ACCEPTED" ||
+          item.labStatus === "APPROVED"
+      ).length
+    };
 
     return {
-      dueConcrete,
-      dueCement,
-      activeTrips,
-      samplesInLab,
-      avgTurnaround,
-      topPrioritized
+      approachingSamples: countBySamplePriority("approaching"),
+      overdueSamples: countBySamplePriority("overdue"),
+      approachingInspections: countByInspectionPriority("approaching"),
+      overdueInspections: countByInspectionPriority("overdue"),
+      completedSamplesYtd,
+      completedInspectionsYtd,
+      completedTrips,
+      labCounts
     };
-  }, [companyProducts, productMap, trips, labForms, tripItems]);
+  }, [companyProducts, companyProductRecords, productMap, trips, tripCompletions, tripItems]);
 
-  const getPriorityMeta = (flag: PriorityFlag): { label: string; variant: BadgeVariant } => ({
-    label: flag === "overdue" ? "Gecikmiş" : flag === "approaching" ? "Yaklaşıyor" : "Tamamlandı",
-    variant: flag === "overdue" ? "danger" : flag === "approaching" ? "warning" : "success"
-  });
+  const Stat = ({
+    label,
+    value,
+    icon,
+    accentClass
+  }: {
+    label: string;
+    value: number;
+    icon?: React.ReactNode;
+    accentClass?: string;
+  }) => (
+    <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-3 py-3 text-sm shadow-sm">
+      <div className="flex items-center gap-3 text-slate-700">
+        {icon ? <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${accentClass}`}>{icon}</span> : null}
+        <span className="font-medium">{label}</span>
+      </div>
+      <span className="text-xl font-semibold text-slate-900">{value}</span>
+    </div>
+  );
 
-  const columns: TableColumn<PrioritizedItem>[] = [
-    {
-      id: "company",
-      header: "Firma / Ürün",
-      cell: (item) => {
-        const company = companyMap.get(item.cp.companyId)?.name ?? "-";
-        const product = productMap.get(item.cp.productId)?.name ?? "-";
-        return (
-          <div className="flex flex-col">
-            <span className="font-medium text-slate-900">{company}</span>
-            <span className="text-xs text-slate-500">{product}</span>
-          </div>
-        );
-      }
-    },
-    {
-      id: "lastSample",
-      header: "Son Numune",
-      cell: (item) => formatDate(item.cp.lastSampleDate)
-    },
-    {
-      id: "lastInspection",
-      header: "Son Gözetim",
-      cell: (item) => formatDate(item.cp.lastInspectionDate)
-    },
-    {
-      id: "status",
-      header: "Durum",
-      cell: (item) => {
-        const sampleMeta = getPriorityMeta(item.samplePriority);
-        const inspectionMeta = getPriorityMeta(item.inspectionPriority);
-        return (
-          <div className="space-y-1 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-slate-700">Numune</span>
-              <Badge variant={sampleMeta.variant}>{sampleMeta.label}</Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-slate-700">Gözetim</span>
-              <Badge variant={inspectionMeta.variant}>{inspectionMeta.label}</Badge>
-            </div>
-          </div>
-        );
-      }
-    }
-  ];
+  const labTotal = metrics.labCounts.sentToLab + metrics.labCounts.waitingReturn;
 
-  const getRowClassName = (item: PrioritizedItem) => {
-    const hasOverdue = item.samplePriority === "overdue" || item.inspectionPriority === "overdue";
-    if (hasOverdue) return "bg-red-50";
-    const hasApproaching = item.samplePriority === "approaching" || item.inspectionPriority === "approaching";
-    if (hasApproaching) return "bg-amber-50";
-    return "bg-green-50";
-  };
+  const YearStat = ({
+    label,
+    value,
+    accentFrom,
+    accentTo,
+    accentText
+  }: {
+    label: string;
+    value: number;
+    accentFrom: string;
+    accentTo: string;
+    accentText: string;
+  }) => (
+    <div
+      className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border border-slate-200/70 px-4 py-4 text-center shadow-sm"
+      style={{ backgroundImage: `linear-gradient(180deg, ${accentFrom}, ${accentTo})` }}
+    >
+      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-700">{label}</span>
+      <span className="block text-3xl font-extrabold" style={{ color: accentText }}>
+        {value}
+      </span>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card
-          header={
-            <div className="flex items-center justify-between">
-              <span>Bu Ay Beton</span>
-              <Badge variant="warning">Öncelik</Badge>
+      <Card header="Saha Öncelikleri" className="lg:col-span-2">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3 rounded-xl bg-amber-50/80 p-4 ring-1 ring-amber-100">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase text-amber-900">
+              Numune Öncelikleri
+              <Clock4 className="h-4 w-4" />
             </div>
-          }
-        >
-          <p className="text-3xl font-semibold text-slate-900">{metrics.dueConcrete}</p>
-          <p className="text-xs text-slate-500">Son numunesi yaklaşan beton eşleşmeleri</p>
-        </Card>
-        <Card
-          header={
-            <div className="flex items-center justify-between">
-              <span>Bu Ay Çimento</span>
-              <Badge variant="warning">Öncelik</Badge>
+            <Stat
+              label="Yaklaşan Numune"
+              value={metrics.approachingSamples}
+              icon={<Clock4 className="h-4 w-4 text-amber-700" />}
+              accentClass="bg-white text-amber-700 shadow-inner"
+            />
+            <Stat
+              label="Gecikmiş Numune"
+              value={metrics.overdueSamples}
+              icon={<AlertTriangle className="h-4 w-4 text-red-600" />}
+              accentClass="bg-white text-red-700 shadow-inner"
+            />
+          </div>
+
+          <div className="space-y-3 rounded-xl bg-sky-50/80 p-4 ring-1 ring-sky-100">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase text-sky-900">
+              Gözetim Öncelikleri
+              <ShieldAlert className="h-4 w-4" />
             </div>
-          }
-        >
-          <p className="text-3xl font-semibold text-slate-900">{metrics.dueCement}</p>
-          <p className="text-xs text-slate-500">Son numunesi yaklaşan çimento eşleşmeleri</p>
-        </Card>
-        <Card header="Aktif Seyahatler">
-          <p className="text-3xl font-semibold text-slate-900">{metrics.activeTrips}</p>
-          <p className="text-xs text-slate-500">Planlanan ve sahada olan seyahatler</p>
-        </Card>
-        <Card header="Lab İş Yükü">
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between">
-              <span>Teslim / Bekliyor</span>
-              <strong>{metrics.samplesInLab.pending}</strong>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Taslak</span>
-              <strong>{metrics.samplesInLab.draft}</strong>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Gönderildi</span>
-              <strong>{metrics.samplesInLab.submitted}</strong>
-            </div>
-            <p className="pt-2 text-xs text-slate-500">Ortalama sonuç süresi ~{metrics.avgTurnaround} gün</p>
+            <Stat
+              label="Yaklaşan Gözetim"
+              value={metrics.approachingInspections}
+              icon={<Clock4 className="h-4 w-4 text-sky-700" />}
+              accentClass="bg-white text-sky-700 shadow-inner"
+            />
+            <Stat
+              label="Gecikmiş Gözetim"
+              value={metrics.overdueInspections}
+              icon={<ShieldAlert className="h-4 w-4 text-rose-600" />}
+              accentClass="bg-white text-rose-700 shadow-inner"
+            />
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card header="Laboratuvar Süreci">
+          <div className="space-y-3">
+            <Stat
+              label="Laba Gönderilen Numune Sayısı"
+              value={metrics.labCounts.sentToLab}
+              icon={<SendHorizonal className="h-4 w-4 text-blue-600" />}
+              accentClass="bg-blue-50 text-blue-700"
+            />
+            <Stat
+              label="Onay Beklenen Numune Sayısı"
+              value={metrics.labCounts.waitingReturn}
+              icon={<FlaskRound className="h-4 w-4 text-fuchsia-600" />}
+              accentClass="bg-fuchsia-50 text-fuchsia-700"
+            />
+            
           </div>
         </Card>
-      </div>
 
-      <div className="flex flex-col gap-4 xl:flex-row">
-        <Card className="flex-1" header="Öncelikli Firma-Ürünler">
-          <Table
-            data={metrics.topPrioritized}
-            columns={columns}
-            keyExtractor={(item) => item.cp.id}
-            emptyState="Öncelikli kayıt bulunmuyor"
-            rowClassName={getRowClassName}
-          />
-        </Card>
-        <Card className="w-full xl:max-w-xs" header="Hızlı İşlemler">
-          <div className="flex flex-col gap-3">
-            <Button onClick={() => addToast({ title: "Seyahat şablonu açılacak", variant: "info" })}>Seyahat Oluştur</Button>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                addToast({
-                  title: "E-posta hatırlatıcıları hazır",
-                  description: "İletim için entegrasyon bekleniyor",
-                  variant: "info"
-                })
-              }
-            >
-              Hatırlatma Gönder
-            </Button>
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
-              Demo: Bu butonlar gerçek işlemleri taklit eder, toast ile geri bildirim sağlar.
-            </div>
+        <Card header="Yıllık İlerleme">
+          <div className="grid auto-rows-fr gap-4 md:grid-cols-3">
+            <YearStat
+              label="Bu Sene Alınan Numune Sayısı"
+              value={metrics.completedSamplesYtd}
+              accentFrom="#d1f6e5"
+              accentTo="#a7e7c6"
+              accentText="#0f5132"
+            />
+            <YearStat
+              label="Bu Sene Alınan Gözetim Sayısı"
+              value={metrics.completedInspectionsYtd}
+              accentFrom="#e0f6df"
+              accentTo="#b8eac8"
+              accentText="#1b5e20"
+            />
+            <YearStat
+              label="Tamamlanan Seyahat Sayısı"
+              value={metrics.completedTrips}
+              accentFrom="#e4e8ff"
+              accentTo="#d4dcff"
+              accentText="#1e3a8a"
+            />
           </div>
         </Card>
       </div>

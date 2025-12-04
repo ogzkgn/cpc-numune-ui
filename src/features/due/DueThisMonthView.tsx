@@ -127,6 +127,7 @@ const DueThisMonthView = () => {
           (inspectionPriority === "overdue" ? 3 : inspectionPriority === "approaching" ? 1 : 0);
 
         const paymentStatus = (record.paymentStatus ?? "yapmadi") as PaymentStatus;
+        if (paymentStatus === "yapmadi") return null;
 
         return {
           record,
@@ -810,7 +811,6 @@ const DueThisMonthView = () => {
 };
 
 export default DueThisMonthView;
-
 
 
 
