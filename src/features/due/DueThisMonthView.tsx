@@ -67,7 +67,7 @@ const statusClassMap: Record<CompanyProductStatus, string> = {
 };
 
 const getPriorityMeta = (flag: PriorityFlag): { label: string; variant: BadgeVariant } => ({
-  label: flag === "overdue" ? "Gecikmiş" : flag === "approaching" ? "Yaklaşıyor" : "Uygun",
+  label: flag === "overdue" ? "Gecikmiş" : flag === "approaching" ? "Yaklaşıyor" : "Tamamlandı",
   variant: flag === "overdue" ? "danger" : flag === "approaching" ? "warning" : "success"
 });
 
@@ -309,7 +309,7 @@ const DueThisMonthView = () => {
     },
     {
       id: "product",
-      header: "Ürün Adı",
+      header: "Ürün Adı / Ürün Sınıfı",
       cell: (item) => item.record.productName ?? item.product.name
     },
     {

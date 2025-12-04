@@ -14,12 +14,12 @@ interface NavItem {
 
 export const navItems: NavItem[] = [
   { path: "/", label: "Gösterge Paneli", icon: Home, roles: ["admin"] },
-  { path: "/firma-urunleri", label: "Firma-Ürünler", icon: Layers, roles: ["admin"] },
-  { path: "/bu-ay-vadesi", label: "Takip ve Planlama", icon: ClipboardList, roles: ["admin"] },
-  { path: "/seyahatler", label: "Seyahatler", icon: Truck, roles: ["admin"] },
-  { path: "/numuneler", label: "Numuneler", icon: TestTube2, roles: ["admin"] },
+  { path: "/firma-urunleri", label: "Müşteri Listesi", icon: Layers, roles: ["admin"] },
+  { path: "/bu-ay-vadesi", label: "Planlama", icon: ClipboardList, roles: ["admin"] },
+  { path: "/seyahatler", label: "Tur Planı", icon: Truck, roles: ["admin"] },
+  { path: "/numuneler", label: "Numune Takip", icon: TestTube2, roles: ["admin"] },
   { path: "/laboratuvar", label: "Laboratuvar", icon: FlaskConical, roles: ["admin", "lab"] },
-  { path: "/ayarlar", label: "Kontrol", icon: Settings, roles: ["admin"] }
+  { path: "/ayarlar", label: "Veri Girişi", icon: Settings, roles: ["admin"] }
 ];
 
 const Sidebar = () => {

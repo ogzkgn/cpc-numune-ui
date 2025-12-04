@@ -20,7 +20,7 @@ type PrioritizedItem = {
 };
 
 const DashboardOverview = () => {
-  const { productMap, companyMap, siteMap } = useEntityMaps();
+  const { productMap, companyMap } = useEntityMaps();
   const companyProducts = useAppStore((state) => state.companyProducts);
   const tripItems = useAppStore((state) => state.tripItems);
   const trips = useAppStore((state) => state.trips);
@@ -84,7 +84,7 @@ const DashboardOverview = () => {
   }, [companyProducts, productMap, trips, labForms, tripItems]);
 
   const getPriorityMeta = (flag: PriorityFlag): { label: string; variant: BadgeVariant } => ({
-    label: flag === "overdue" ? "Gecikmiş" : flag === "approaching" ? "Yaklaşıyor" : "Uygun",
+    label: flag === "overdue" ? "Gecikmiş" : flag === "approaching" ? "Yaklaşıyor" : "Tamamlandı",
     variant: flag === "overdue" ? "danger" : flag === "approaching" ? "warning" : "success"
   });
 
@@ -101,15 +101,6 @@ const DashboardOverview = () => {
             <span className="text-xs text-slate-500">{product}</span>
           </div>
         );
-      }
-    },
-    {
-      id: "location",
-      header: "İl / İlçe",
-      cell: (item) => {
-        const site = item.cp.siteId ? siteMap.get(item.cp.siteId) : undefined;
-        if (!site) return "-";
-        return site.district ? `${site.city} / ${site.district}` : site.city ?? "-";
       }
     },
     {

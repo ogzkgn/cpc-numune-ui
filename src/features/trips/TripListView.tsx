@@ -147,7 +147,7 @@ const TripListView = () => {
     },
     {
       id: "assignees",
-      header: "Ekip",
+      header: "Denetçiler",
       cell: (row) => (
         <div className="flex flex-wrap gap-1">
           {row.trip.assigneeIds.map((id) => {

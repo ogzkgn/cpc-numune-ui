@@ -14,7 +14,6 @@ import type { Employee, Lab, Product, ProductType } from "../../types";
 
 const SettingsView = () => {
   const employees = useAppStore((state) => state.employees);
-  const samplingCycles = useAppStore((state) => state.samplingCycles);
   const products = useAppStore((state) => state.products);
   const loadProducts = useAppStore((state) => state.loadProducts);
   const loadEmployees = useAppStore((state) => state.loadEmployees);
@@ -296,7 +295,7 @@ const SettingsView = () => {
         status: employeeForm.status,
         skills: employeeForm.skills
       });
-      addToast({ title: "Ekip güncellendi", variant: "success" });
+      addToast({ title: "Denetçi listesi güncellendi", variant: "success" });
     } else {
       await addEmployee({
         name: employeeForm.name.trim(),
@@ -304,7 +303,7 @@ const SettingsView = () => {
         status: employeeForm.status,
         skills: employeeForm.skills
       });
-      addToast({ title: "Ekip eklendi", variant: "success" });
+      addToast({ title: "Denetçi eklendi", variant: "success" });
     }
 
     setEmployeeForm({
@@ -329,7 +328,7 @@ const SettingsView = () => {
   const handleDeleteEmployee = (employee: Employee) => {
     if (!window.confirm(`"${employee.name}" kaydını silmek istediğinize emin misiniz?`)) return;
     deleteEmployee(employee.id);
-    addToast({ title: "Ekip silindi", variant: "success" });
+    addToast({ title: "Denetçi silindi", variant: "success" });
     if (employeeForm.id === employee.id) {
       setEmployeeForm({
         id: null,
@@ -351,14 +350,14 @@ const SettingsView = () => {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-slate-900">Kontrol</h1>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card header="Ekip">
+        <Card header="Denetçi">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <Table columns={employeeColumns} data={employees} keyExtractor={(row) => row.id} emptyState="Kullanıcı bulunamadı" />
             </div>
             <form className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" onSubmit={handleEmployeeSubmit}>
               <h3 className="text-sm font-semibold text-slate-800">
-                {employeeForm.id ? "Ekip Güncelle" : "Yeni Ekip Ekle"}
+                {employeeForm.id ? "Denetçi Güncelle" : "Yeni denetçi Ekle"}
               </h3>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Ad - Soyad
@@ -465,10 +464,10 @@ const SettingsView = () => {
             />
           </div>
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">Yeni Ürün Ekle</h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-800">Yeni Standart Ekle</h3>
             <form className="space-y-4" onSubmit={handleProductSubmit}>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                Ürün Adı
+                Ürün Adı / Ürün Sınıfı
                 <input
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={productForm.name}

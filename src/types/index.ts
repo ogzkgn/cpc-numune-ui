@@ -27,6 +27,7 @@ export interface CompanyProduct {
   companyId: number;
   siteId?: number;
   productId: number;
+  btCode?: string;
   productCode?: string;
   certificateNo?: string;
   certificateDate?: string;

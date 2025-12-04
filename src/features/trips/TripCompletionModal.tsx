@@ -360,17 +360,21 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         .filter((value): value is typeof employees[number] => Boolean(value));
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
       const requiresInspection = dutyType === "GÖZETİM" || dutyType === "BOTH";
+      const isExistingInvalid =
+        entry.trackingCode && entry.trackingCode.toLowerCase().includes("undefined");
       const trackingCode =
-        entry.trackingCode ??
-        (requiresSample && entry.performedAt && !entry.sampleNotCompleted
-          ? generateLabEntryCode({
-              productCode: record?.productCode,
-              performedAt: entry.performedAt,
-              tripItems,
-              companyProductId: tripItem?.companyProductId,
-              excludeTripItemId: entry.tripItemId
-            }) ?? undefined
-          : undefined);
+        !isExistingInvalid && entry.trackingCode
+          ? entry.trackingCode
+          : requiresSample && entry.performedAt && !entry.sampleNotCompleted
+            ? generateLabEntryCode({
+                productCode: record?.productCode,
+                btCode: record?.btCode,
+                performedAt: entry.performedAt,
+                tripItems,
+                companyProductId: tripItem?.companyProductId ?? record?.id,
+                excludeTripItemId: entry.tripItemId
+              }) ?? undefined
+            : undefined;
 
       return {
         entry,
@@ -594,7 +598,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                 <thead className="bg-slate-50">
                   <tr className="text-left text-slate-600">
                     <th className="px-3 py-2">Firma / Tesis</th>
-                    <th className="px-3 py-2">Ürün Kodu</th>
+                    <th className="px-3 py-2">BT kod / Ürün Kodu</th>
                     <th className="px-3 py-2">İlçe / İl</th>
                     <th className="px-3 py-2">Ürün Tipi</th>
                     <th className="px-3 py-2">Görev Bilgisi</th>
@@ -616,7 +620,9 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                         {companyProductRecord?.location ? ` / ${companyProductRecord.location}` : ""}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        {companyProductRecord?.productCode ?? "-"}
+                        {companyProductRecord?.btCode
+                          ? `${companyProductRecord.btCode}${companyProductRecord.productCode ? ` / ${companyProductRecord.productCode}` : ""}`
+                          : companyProductRecord?.productCode ?? "-"}
                       </td>
                       <td className="px-3 py-2 text-slate-700">
                         {companyProductRecord?.location ?? "-"}
@@ -634,7 +640,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                               {dutyAssignees.map((assignee) => assignee.name).join(", ")}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-red-600">Planlamada ekip atanmadı</span>
+                            <span className="text-[11px] text-red-600">Planlamada denetçi atanmadı</span>
                           )}
                         </div>
                       </td>

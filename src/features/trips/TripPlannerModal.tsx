@@ -13,7 +13,7 @@ import type { LodgingProvider, ProductType, TransportMode, TripDutyType } from "
 
 const steps = [
   { id: "items", title: "Firma-Ürün Seçimi", description: "Seyahate dahil edilecek kayıtları işaretleyin" },
-  { id: "assignees", title: "Ekip Atama", description: "Uygun saha ekiplerini seçin" },
+  { id: "assignees", title: "Denetçi Atama", description: "Uygun saha denetçilerini seçin" },
   { id: "plan", title: "Planlama", description: "Tarih ve notları girin" }
 ];
 
@@ -321,7 +321,7 @@ const TripPlannerModal = () => {
       open={tripPlanner.open}
       onClose={handleClose}
       title="Seyahat Planlayıcı"
-      description="Firma-ürün seçiminden ekip atamasına kadar süreci tamamlayın"
+      description="Firma-ürün seçiminden denetçi atamasına kadar süreci tamamlayın"
       size="xl"
       className="max-w-5xl"
       footer={
@@ -335,7 +335,7 @@ const TripPlannerModal = () => {
               <span className="text-xs text-slate-500">Adım 1/3</span>
             )}
             {activeStep === "assignees" && !coverageOk ? (
-              <span className="text-xs text-red-500">Seçilen ekip ürün yetkinliklerini karşılamıyor</span>
+              <span className="text-xs text-red-500">Seçilen denetçi ürün yetkinliklerini karşılamıyor</span>
             ) : null}
           </div>
           {activeStep === "plan" ? (
@@ -536,7 +536,7 @@ const TripPlannerModal = () => {
               <div className="flex items-center justify-between gap-3">
                 <h4 className="text-sm font-semibold text-slate-700">Görev Ayarları</h4>
                 {!dutyConfigValid ? (
-                  <span className="text-xs text-red-600">Her firma-ürün için görev nedeni ve ekip seçimi zorunlu.</span>
+                  <span className="text-xs text-red-600">Her firma-ürün için görev nedeni ve denetçi seçimi zorunlu.</span>
                 ) : null}
               </div>
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -544,7 +544,7 @@ const TripPlannerModal = () => {
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-3 py-2 font-medium">Firma / Ürün</th>
-                      <th className="px-3 py-2 font-medium">Ürün Kodu</th>
+                      <th className="px-3 py-2 font-medium">BT / Ürün Kodu</th>
                       <th className="px-3 py-2 font-medium">Görev Nedeni*</th>
                       <th className="px-3 py-2 font-medium">Görev Ekibi</th>
                     </tr>
@@ -568,7 +568,9 @@ const TripPlannerModal = () => {
                             </div>
                           </td>
                           <td className="px-3 py-3 align-top text-slate-700">
-                            {item.record.productCode ?? "-"}
+                            {item.record.btCode
+                              ? `${item.record.btCode}${item.record.productCode ? ` / ${item.record.productCode}` : ""}`
+                              : item.record.productCode ?? "-"}
                           </td>
                           <td className="px-3 py-3 align-top">
                             <select
@@ -587,7 +589,7 @@ const TripPlannerModal = () => {
                           </td>
                           <td className="px-3 py-3 align-top">
                             {selectedAssignees.length === 0 ? (
-                              <p className="text-xs text-slate-500">Ekip seçmek için önceki adımı tamamlayın.</p>
+                              <p className="text-xs text-slate-500">Denetçis seçmek için önceki adımı tamamlayın.</p>
                             ) : (
                               <div className="flex flex-wrap gap-2">
                                 {selectedAssignees.map((assignee) => {
@@ -610,7 +612,7 @@ const TripPlannerModal = () => {
                               </div>
                             )}
                             {rowInvalid ? (
-                              <p className="mt-2 text-[11px] text-red-600">En az bir ekip üyesi seçin.</p>
+                              <p className="mt-2 text-[11px] text-red-600">En az bir denetçi seçin.</p>
                             ) : null}
                           </td>
                         </tr>
@@ -632,7 +634,7 @@ const TripPlannerModal = () => {
               <h4 className="text-sm font-semibold text-slate-700">Özet</h4>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                 <p>Firma-Ürün sayısı: {selectedProducts.length}</p>
-                <p>Atanan ekip: {selectedAssignees.map((item) => item.name).join(", ") || "Belirtilmedi"}</p>
+                <p>Atanan denetçiler: {selectedAssignees.map((item) => item.name).join(", ") || "Belirtilmedi"}</p>
                 <p>Ulaşım: {selectedTransportLabel ?? "Belirtilmedi"}</p>
                 {isCompanyVehicle ? <p>Araç Plakası: {vehiclePlate || "-"}</p> : null}
                 <p>Konaklama: {selectedLodgingLabel ?? "Belirtilmedi"}</p>
@@ -654,7 +656,7 @@ const TripPlannerModal = () => {
                         <li key={item.id}>
                           {item.record.companyName} / {item.record.productName ?? item.product?.name ?? "-"}
                           {item.record.productCode ? ` [${item.record.productCode}]` : ""}: {dutyLabel}{" "}
-                          {teamNames ? `(${teamNames})` : "(Ekip seçilmedi)"}
+                          {teamNames ? `(${teamNames})` : "(Denetçi seçilmedi)"}
                         </li>
                       );
                     })}

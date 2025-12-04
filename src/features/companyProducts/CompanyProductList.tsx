@@ -365,7 +365,7 @@ const CompanyProductList = () => {
     },
     {
       id: "productName",
-      header: "Ürün Adı",
+      header: "Ürün Adı / Sınıfı",
       cell: (row) => row.productName ?? "-"
     },
     {
@@ -815,7 +815,7 @@ const CompanyProductList = () => {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-              Ürün Adı
+              Ürün Adı / Sınıfı
               <select
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 value={editorState.productName}
@@ -826,7 +826,7 @@ const CompanyProductList = () => {
                   selectProduct(match);
                 }}
               >
-                <option value="">Ürün adı seçin</option>
+                <option value="">Ürün adı / sınıfı seçin</option>
                 {productNameOptions.map((name) => (
                   <option key={name} value={name}>
                     {name}
@@ -843,7 +843,7 @@ const CompanyProductList = () => {
               />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-              BT Kod
+              BT Kod (Beton ürünleri için)
               <input
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 value={editorState.btCode}

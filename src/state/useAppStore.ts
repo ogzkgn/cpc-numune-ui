@@ -562,7 +562,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         employees: recalcEmployeeStatuses(data.map((item) => mapApiEmployee(item)), state.trips)
       }));
     } catch (error) {
-      console.error("Ekip listesi yüklenemedi, boş liste kullanılacak.", error);
+      console.error("Denetçi listesi yüklenemedi, boş liste kullanılacak.", error);
       set((state) => ({ employees: recalcEmployeeStatuses([], state.trips) }));
     }
   },
@@ -650,7 +650,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         employees: recalcEmployeeStatuses([...state.employees, created], state.trips)
       }));
     } catch (error) {
-      console.error("Ekip eklenemedi, lokal ekleme yapılıyor.", error);
+      console.error("Denetçi eklenemedi, lokal ekleme yapılıyor.", error);
       set((state) => ({
         employees: recalcEmployeeStatuses(
           [
@@ -683,7 +683,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       updated = mapApiEmployee(await response.json());
     } catch (error) {
-      console.error("Ekip güncelleme API isteği başarısız, lokal güncellenecek.", error);
+      console.error("Denetçi güncelleme isteği başarısız, lokal güncellenecek.", error);
     } finally {
       set((state) => ({
         employees: recalcEmployeeStatuses(
@@ -702,7 +702,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (error) {
-      console.error("Ekip silme API isteği başarısız, lokal silinecek.", error);
+      console.error("Denetçi silme API isteği başarısız, lokal silinecek.", error);
     } finally {
       set((state) => ({
         employees: recalcEmployeeStatuses(state.employees.filter((emp) => emp.id !== id), state.trips)
@@ -1279,15 +1279,19 @@ export const useAppStore = create<AppState>((set, get) => ({
             : dutyAssignment?.dutyAssigneeIds ?? [];
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
 
-      let trackingCode = entry.trackingCode;
+      const existingTracking = entry.trackingCode;
+      const hasValidTrackingCode =
+        existingTracking && !existingTracking.toLowerCase().includes("undefined");
+      let trackingCode = hasValidTrackingCode ? existingTracking : undefined;
       if (requiresSample && !entry.sampleNotCompleted && entry.performedAt) {
         if (!trackingCode) {
           trackingCode =
             generateLabEntryCode({
               productCode: companyProduct?.productCode,
+              btCode: companyProduct?.btCode,
               performedAt: entry.performedAt,
               tripItems: baseTripItems,
-              companyProductId: tripItem?.companyProductId,
+              companyProductId: tripItem?.companyProductId ?? companyProduct?.id,
               excludeTripItemId: entry.tripItemId
             }) ?? undefined;
         }
@@ -1478,17 +1482,21 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : dutyAssignment?.dutyAssigneeIds ?? [];
           const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
 
-          let trackingCode = entry.trackingCode;
+          const existingTracking = entry.trackingCode;
+          const hasValidTrackingCode =
+            existingTracking && !existingTracking.toLowerCase().includes("undefined");
+          let trackingCode = hasValidTrackingCode ? existingTracking : undefined;
           if (requiresSample && !entry.sampleNotCompleted && entry.performedAt) {
             if (!trackingCode) {
               trackingCode =
-                generateLabEntryCode({
-                  productCode: companyProduct?.productCode,
-                  performedAt: entry.performedAt,
-                  tripItems: baseTripItemsFallback,
-                  companyProductId: tripItem?.companyProductId,
-                  excludeTripItemId: entry.tripItemId
-                }) ?? undefined;
+              generateLabEntryCode({
+                productCode: companyProduct?.productCode,
+                btCode: companyProduct?.btCode,
+                performedAt: entry.performedAt,
+                tripItems: baseTripItemsFallback,
+                companyProductId: tripItem?.companyProductId ?? companyProduct?.id,
+                excludeTripItemId: entry.tripItemId
+              }) ?? undefined;
             }
             if (trackingCode) {
               trackingCodeUpdatesFallback.set(entry.tripItemId, trackingCode);

@@ -105,16 +105,20 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
         .filter((value): value is string => Boolean(value));
       const requiresSample = dutyType === "NUMUNE" || dutyType === "BOTH";
       const requiresInspection = dutyType === "GÖZETİM" || dutyType === "BOTH";
+      const isExistingInvalid =
+        entry.trackingCode && entry.trackingCode.toLowerCase().includes("undefined");
       const trackingCode =
         requiresSample && entry.performedAt && !entry.sampleNotCompleted
-          ? entry.trackingCode ??
-            generateLabEntryCode({
-              productCode: record?.productCode,
-              performedAt: entry.performedAt,
-              tripItems,
-              excludeTripItemId: entry.tripItemId
-            }) ??
-            "-"
+          ? !isExistingInvalid && entry.trackingCode
+            ? entry.trackingCode
+            : generateLabEntryCode({
+                productCode: record?.productCode,
+                btCode: record?.btCode,
+                performedAt: entry.performedAt,
+                tripItems,
+                companyProductId: companyProductId,
+                excludeTripItemId: entry.tripItemId
+              }) ?? "-"
           : "-";
 
       return {
@@ -278,7 +282,7 @@ const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: 
                             {dutyAssigneeNames.length > 0 ? (
                               <span className="text-[11px] text-slate-500">{dutyAssigneeNames.join(", ")}</span>
                             ) : (
-                              <span className="text-[11px] text-slate-400">Ekip atanmadı</span>
+                              <span className="text-[11px] text-slate-400">Denetçi atanmadı</span>
                             )}
                           </div>
                         </td>

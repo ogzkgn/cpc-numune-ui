@@ -60,18 +60,34 @@ export const getAnnualRequiredSampleCount = (
 
 export const generateLabEntryCode = ({
   productCode,
+  btCode,
   performedAt,
   tripItems,
   excludeTripItemId,
   companyProductId
 }: {
   productCode?: string;
+  btCode?: string;
   performedAt?: string;
   tripItems: TripItem[];
   excludeTripItemId?: number;
   companyProductId?: number;
 }): string | undefined => {
-  if (!productCode || !performedAt) return undefined;
+  if (!performedAt) return undefined;
+
+  const sanitize = (value?: string) => {
+    if (!value) return "";
+    const normalized = value.replace(/\s+/g, "").trim();
+    if (!normalized || normalized.toLowerCase() === "undefined" || normalized.toLowerCase() === "null") return "";
+    return normalized;
+  };
+  const sanitizedProductCode = sanitize(productCode);
+  const sanitizedBt = sanitize(btCode);
+  const baseCode =
+    sanitizedProductCode ||
+    sanitizedBt ||
+    (companyProductId !== undefined ? `CP${companyProductId}` : "");
+  if (!baseCode) return undefined;
 
   const date = new Date(performedAt);
   if (Number.isNaN(date.getTime())) return undefined;
@@ -90,6 +106,5 @@ export const generateLabEntryCode = ({
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = String(date.getFullYear()).slice(-2);
 
-  return `${productCode}.T${sequence}.${month}${year}`;
+  return `${baseCode}.T${sequence}.${month}${year}`;
 };
-

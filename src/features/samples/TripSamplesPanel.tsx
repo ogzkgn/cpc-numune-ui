@@ -71,13 +71,17 @@ const TripSamplesPanel = () => {
 
   const pendingEntryCode = useMemo(
     () =>
-      activeRow?.trackingCode ??
+      (activeRow?.trackingCode && !activeRow.trackingCode.startsWith("undefined")
+        ? activeRow.trackingCode
+        : undefined) ??
       (activeRow
         ?
             generateLabEntryCode({
               productCode: activeRow.productCode,
+              btCode: activeRow.companyBtCode,
               performedAt: activeRow.performedAt,
               tripItems,
+              companyProductId: activeRow.companyProductId,
               excludeTripItemId: activeRow.tripItemId
             }) ?? undefined
         : undefined),
