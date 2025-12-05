@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS labs (
   id         BIGSERIAL PRIMARY KEY,
   name       TEXT NOT NULL,
   city       TEXT,
+  email      TEXT NOT NULL UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -164,4 +165,12 @@ CREATE TABLE IF NOT EXISTS trip_completion_entries (
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (trip_completion_id, company_product_id)
+);
+
+-- Users (auth)
+CREATE TABLE IF NOT EXISTS users (
+  email      TEXT PRIMARY KEY,
+  password   TEXT NOT NULL,
+  role       TEXT NOT NULL CHECK (role IN ('admin','lab')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

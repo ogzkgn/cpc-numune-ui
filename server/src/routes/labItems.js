@@ -33,6 +33,11 @@ router.get("/", async (req, res) => {
   const { status } = req.query; // optional filters: processing/inbox
   try {
     const whereClauses = [];
+    const params = [];
+    if (req.user?.role === "lab" && req.user.labId) {
+      params.push(req.user.labId);
+      whereClauses.push(`ti.lab_assigned_lab_id = $${params.length}`);
+    }
     if (status === "processing") {
       whereClauses.push("ti.lab_sent_at IS NOT NULL");
       whereClauses.push("ti.lab_status NOT IN ('ACCEPTED','APPROVED','WAITING_CONFIRM')");
@@ -47,7 +52,8 @@ router.get("/", async (req, res) => {
        JOIN company_products cp ON cp.id = ti.company_product_id
        LEFT JOIN products p ON p.id = cp.product_id
        ${where}
-       ORDER BY ti.lab_sent_at DESC NULLS LAST, ti.id DESC`
+       ORDER BY ti.lab_sent_at DESC NULLS LAST, ti.id DESC`,
+      params
     );
 
     const formsResult = await pool.query(`SELECT * FROM lab_forms`);

@@ -65,6 +65,7 @@ export interface Lab {
   id: number;
   name: string;
   city?: string;
+  email: string;
 }
 
 export type TransportMode = "COMPANY_VEHICLE" | "BUS" | "PLANE" | "TRAIN";

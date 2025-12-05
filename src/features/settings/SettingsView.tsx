@@ -103,6 +103,7 @@ const SettingsView = () => {
 
   const labColumns: TableColumn<Lab>[] = [
     { id: "name", header: "Laboratuvar", cell: (row) => row.name },
+    { id: "email", header: "E-posta", cell: (row) => row.email ?? "-" },
     { id: "city", header: "Şehir", cell: (row) => row.city ?? "-" },
     {
       id: "actions",
@@ -160,9 +161,11 @@ const SettingsView = () => {
     id: number | null;
     name: string;
     city: string;
+    email: string;
   };
 
-  const [labForm, setLabForm] = useState<LabFormState>({ id: null, name: "", city: "" });
+  const [labForm, setLabForm] = useState<LabFormState>({ id: null, name: "", city: "", email: "" });
+  const [labCredentials, setLabCredentials] = useState<{ email: string; password: string } | null>(null);
 
   const sortedProducts = useMemo(
     () => [...products].sort((a, b) => a.name.localeCompare(b.name, "tr")),
@@ -203,29 +206,47 @@ const SettingsView = () => {
     });
   };
 
-  const handleLabSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleLabSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setLabCredentials(null);
     if (!labForm.name.trim()) {
       addToast({ title: "Laboratuvar adı zorunlu", variant: "error" });
       return;
     }
-    if (labForm.id) {
-      updateLab(labForm.id, { name: labForm.name.trim(), city: labForm.city.trim() });
-      addToast({ title: "Laboratuvar güncellendi", variant: "success" });
-    } else {
-      addLab({ name: labForm.name.trim(), city: labForm.city.trim() });
-      addToast({ title: "Laboratuvar eklendi", variant: "success" });
+    if (!labForm.email.trim()) {
+      addToast({ title: "E-posta zorunlu", variant: "error" });
+      return;
     }
-    setLabForm({ id: null, name: "", city: "" });
+    const email = labForm.email.trim().toLowerCase();
+    const payload = { name: labForm.name.trim(), city: labForm.city.trim(), email };
+
+    try {
+      const result = labForm.id
+        ? await updateLab(labForm.id, payload)
+        : await addLab(payload);
+      addToast({ title: labForm.id ? "Laboratuvar güncellendi" : "Laboratuvar eklendi", variant: "success" });
+      if (result?.oneTimePassword) {
+        setLabCredentials({ email: result.lab.email, password: result.oneTimePassword });
+      }
+      setLabForm({ id: null, name: "", city: "", email: "" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : undefined;
+      addToast({
+        title: "Laboratuvar kaydedilemedi",
+        description: message,
+        variant: "error"
+      });
+    }
   };
 
   const handleEditLab = (lab: Lab) => {
-    setLabForm({ id: lab.id, name: lab.name, city: lab.city ?? "" });
+    setLabForm({ id: lab.id, name: lab.name, city: lab.city ?? "", email: lab.email ?? "" });
   };
 
   const handleDeleteLab = (lab: Lab) => {
     deleteLab(lab.id);
     addToast({ title: "Laboratuvar silindi", variant: "info" });
+    setLabCredentials(null);
   };
 
   const handleProductSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -430,6 +451,16 @@ const SettingsView = () => {
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                E-posta
+                <input
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={labForm.email}
+                  onChange={(event) => setLabForm((prev) => ({ ...prev, email: event.target.value }))}
+                  placeholder="ornek@laboratuvar.com"
+                  type="email"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Şehir
                 <input
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -441,12 +472,37 @@ const SettingsView = () => {
               <div className="flex items-end gap-2 md:col-span-2">
                 <Button type="submit">{labForm.id ? "Güncelle" : "Ekle"}</Button>
                 {labForm.id ? (
-                  <Button variant="ghost" type="button" onClick={() => setLabForm({ id: null, name: "", city: "" })}>
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={() => setLabForm({ id: null, name: "", city: "", email: "" })}
+                  >
                     İptal
                   </Button>
                 ) : null}
               </div>
             </form>
+            {labCredentials ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <p className="font-semibold">Yeni laboratuvar kullanıcısı oluşturuldu</p>
+                    <p>
+                      E-posta: <span className="font-mono">{labCredentials.email}</span>
+                    </p>
+                    <p>
+                      Geçici Şifre: <span className="font-mono">{labCredentials.password}</span>
+                    </p>
+                    <p className="text-xs text-amber-800">
+                      Bu şifreyi laboratuvara iletin. İlk girişte değiştirmelerini isteyin.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setLabCredentials(null)}>
+                    Kapat
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <Table columns={labColumns} data={labs} keyExtractor={(row) => row.id} emptyState="Laboratuvar bulunmuyor" />
           </div>
         </Card>

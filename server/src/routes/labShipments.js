@@ -30,8 +30,15 @@ const mapTripItemRow = (row) => ({
 });
 
 // Pending samples to send to lab
-router.get("/pending", async (_req, res) => {
+router.get("/pending", async (req, res) => {
   try {
+    const params = [];
+    let labFilter = "";
+    if (req.user?.role === "lab" && req.user.labId) {
+      params.push(req.user.labId);
+      labFilter = "AND ti.lab_assigned_lab_id = $1";
+    }
+
     const result = await pool.query(
       `SELECT
          ti.id AS trip_item_id,
@@ -59,7 +66,9 @@ router.get("/pending", async (_req, res) => {
          AND e.performed_at IS NOT NULL
          AND ls.id IS NULL
          AND (ti.lab_status IS NULL OR ti.lab_status = 'PENDING')
-       ORDER BY e.performed_at DESC, ti.id DESC`
+         ${labFilter}
+       ORDER BY e.performed_at DESC, ti.id DESC`,
+      params
     );
 
     const rows = result.rows.map((row) => ({
@@ -102,12 +111,21 @@ router.put("/:tripItemId", async (req, res) => {
   if (!lab_id || !lab_entry_code || !seal_no) {
     return res.status(400).json({ error: "lab_id, lab_entry_code and seal_no are required" });
   }
+  if (req.user?.role === "lab" && req.user.labId && req.user.labId !== Number(lab_id)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
 
   const client = await pool.connect();
   try {
     const tripItemResult = await client.query("SELECT * FROM trip_items WHERE id = $1", [tripItemId]);
     if (tripItemResult.rowCount === 0) {
       return res.status(404).json({ error: "Trip item not found" });
+    }
+    if (req.user?.role === "lab" && req.user.labId) {
+      const assigned = tripItemResult.rows[0].lab_assigned_lab_id;
+      if (assigned !== req.user.labId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
     }
 
     await client.query("BEGIN");

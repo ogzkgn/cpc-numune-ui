@@ -114,8 +114,37 @@ interface TripPlannerState {
   selectedCompanyProductIds: number[];
 }
 
+type LabAuthResult = {
+  lab: Lab;
+  oneTimePassword?: string;
+};
+
+const initialData = {
+  companies: [] as Company[],
+  products: [] as Product[],
+  companyProducts: [] as CompanyProduct[],
+  companyProductRecords: [] as CompanyProductRecord[],
+  labs: [] as Lab[],
+  employees: [] as Employee[],
+  trips: [] as Trip[],
+  tripItems: [] as TripItem[],
+  labForms: [] as LabForm[],
+  tripCompletions: [] as TripCompletion[],
+  pendingSamples: [] as PendingSample[],
+  samplingCycles: [] as ConfigurableCycle[],
+  toasts: [] as ToastMessage[],
+  activeRole: "admin" as UserRole,
+  tripPlanner: {
+    open: false,
+    selectedCompanyProductIds: []
+  }
+};
+
 const getCompanyProductRecordKey = (record: CompanyProductRecord) =>
   `${record.companyName}__${record.productId ?? record.productType}__${record.productCode ?? record.standard ?? ""}`;
+
+const withAuth = (input: RequestInfo | URL, init?: RequestInit) =>
+  fetch(input, { credentials: "include", ...(init ?? {}) });
 
 const mapApiProduct = (row: any): Product => ({
   id: row.id,
@@ -265,13 +294,14 @@ interface AppState {
   toasts: ToastMessage[];
   activeRole: UserRole;
   tripPlanner: TripPlannerState;
+  resetState: () => void;
   loadProducts: () => Promise<void>;
   loadTrips: () => Promise<void>;
   loadPendingSamples: () => Promise<void>;
   loadLabItems: (status?: "processing" | "inbox") => Promise<void>;
   loadLabs: () => Promise<void>;
-  addLab: (input: Omit<Lab, "id">) => Promise<void>;
-  updateLab: (id: number, changes: Omit<Lab, "id">) => Promise<void>;
+  addLab: (input: Omit<Lab, "id">) => Promise<LabAuthResult | undefined>;
+  updateLab: (id: number, changes: Omit<Lab, "id">) => Promise<LabAuthResult | undefined>;
   deleteLab: (id: number) => Promise<void>;
   loadTripCompletion: (tripId: number) => Promise<void>;
   loadEmployees: () => Promise<void>;
@@ -325,29 +355,14 @@ const recalcEmployeeStatuses = (employees: Employee[], trips: Trip[]): Employee[
 const generateId = () => Math.floor(Date.now() + Math.random() * 1000);
 
 export const useAppStore = create<AppState>((set, get) => ({
-  companies: [],
-  products: [],
-  companyProducts: [],
-  companyProductRecords: [],
-  labs: [],
-  employees: [],
-  trips: [],
-  tripItems: [],
-  labForms: [],
-  tripCompletions: [],
-  pendingSamples: [],
-  samplingCycles: [],
-  toasts: [],
-  activeRole: "admin",
-  tripPlanner: {
-    open: false,
-    selectedCompanyProductIds: []
-  },
+  ...initialData,
+
+  resetState: () => set({ ...initialData }),
 
   loadProducts: async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/products`);
+      const response = await withAuth(`${baseUrl}/products`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -362,7 +377,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadTrips: async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/trips`);
+      const response = await withAuth(`${baseUrl}/trips`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -396,7 +411,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadPendingSamples: async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/lab-shipments/pending`);
+      const response = await withAuth(`${baseUrl}/lab-shipments/pending`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as any[];
       set({
@@ -424,7 +439,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
       const query = status ? `?status=${status}` : "";
-      const response = await fetch(`${baseUrl}/lab-items${query}`);
+      const response = await withAuth(`${baseUrl}/lab-items${query}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const apiTripItems = Array.isArray(data?.tripItems) ? data.tripItems : [];
@@ -449,10 +464,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadLabs: async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/labs`);
+      const response = await withAuth(`${baseUrl}/labs`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      set({ labs: Array.isArray(data) ? data.map((row) => ({ id: Number(row.id), name: row.name, city: row.city ?? undefined })) : [] });
+      set({
+        labs: Array.isArray(data)
+          ? data.map((row) => ({
+              id: Number(row.id),
+              name: row.name,
+              city: row.city ?? undefined,
+              email: row.email
+            }))
+          : []
+      });
     } catch (error) {
       console.error("Labs fetch failed.", error);
       // Keep existing labs on failure to avoid blanking out names in UI
@@ -462,41 +486,81 @@ export const useAppStore = create<AppState>((set, get) => ({
   addLab: async (input) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/labs`, {
+      const response = await withAuth(`${baseUrl}/labs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: input.name, city: (input as any).city })
+        body: JSON.stringify({ name: input.name, city: (input as any).city, email: (input as any).email })
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const created = await response.json();
-      set((state) => ({ labs: [...state.labs, { id: Number(created.id), name: created.name, city: created.city ?? undefined }] }));
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data?.error) message = data.error;
+        } catch (_err) {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      const { oneTimePassword, ...created } = payload ?? {};
+      const mapped = {
+        id: Number(created.id),
+        name: created.name,
+        city: created.city ?? undefined,
+        email: created.email
+      } as Lab;
+      set((state) => ({ labs: [...state.labs, mapped] }));
+      return { lab: mapped, oneTimePassword: typeof oneTimePassword === "string" ? oneTimePassword : undefined };
     } catch (error) {
       console.error("Lab add failed.", error);
+      throw error;
     }
   },
 
   updateLab: async (id, changes) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/labs/${id}`, {
+      const response = await withAuth(`${baseUrl}/labs/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: changes.name, city: (changes as any).city })
+        body: JSON.stringify({
+          name: changes.name,
+          city: (changes as any).city,
+          email: (changes as any).email
+        })
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const updated = await response.json();
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data?.error) message = data.error;
+        } catch (_err) {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      const payload = await response.json();
+      const { oneTimePassword, ...updated } = payload ?? {};
+      const mapped = {
+        id,
+        name: updated.name,
+        city: updated.city ?? undefined,
+        email: updated.email
+      } as Lab;
       set((state) => ({
-        labs: state.labs.map((lab) => (lab.id === id ? { id, name: updated.name, city: updated.city ?? undefined } : lab))
+        labs: state.labs.map((lab) => (lab.id === id ? mapped : lab))
       }));
+      return { lab: mapped, oneTimePassword: typeof oneTimePassword === "string" ? oneTimePassword : undefined };
     } catch (error) {
       console.error("Lab update failed.", error);
+      throw error;
     }
   },
 
   deleteLab: async (id) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/labs/${id}`, { method: "DELETE" });
+      const response = await withAuth(`${baseUrl}/labs/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (error) {
       console.error("Lab delete failed.", error);
@@ -508,7 +572,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadTripCompletion: async (tripId: number) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/trips/${tripId}/completion`);
+      const response = await withAuth(`${baseUrl}/trips/${tripId}/completion`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (!data) return;
@@ -571,7 +635,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadEmployees: async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/employees`);
+      const response = await withAuth(`${baseUrl}/employees`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -588,7 +652,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadCompanyProductRecords: async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/company-products`);
+      const response = await withAuth(`${baseUrl}/company-products`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = (await response.json()) as any[];
       set({ companyProductRecords: data.map((item) => mapApiCompanyProductRecord(item)) });
@@ -601,7 +665,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   addProduct: async (input) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/products`, {
+      const response = await withAuth(`${baseUrl}/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -634,7 +698,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteProduct: async (id) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/products/${id}`, {
+      const response = await withAuth(`${baseUrl}/products/${id}`, {
         method: "DELETE"
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -657,7 +721,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/employees`, {
+      const response = await withAuth(`${baseUrl}/employees`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -688,7 +752,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     let updated: Employee | undefined;
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/employees/${id}`, {
+      const response = await withAuth(`${baseUrl}/employees/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -715,7 +779,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteEmployee: async (id) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/employees/${id}`, {
+      const response = await withAuth(`${baseUrl}/employees/${id}`, {
         method: "DELETE"
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -793,7 +857,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/trips`, {
+      const response = await withAuth(`${baseUrl}/trips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -977,7 +1041,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const seal = options.shipment.sealNo.trim();
         const weightStr = options.shipment.weight?.toString().trim() ?? "";
-        const response = await fetch(`${baseUrl}/lab-shipments/${tripItemId}`, {
+      const response = await withAuth(`${baseUrl}/lab-shipments/${tripItemId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1023,7 +1087,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   addCompanyProductRecord: async (input) => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/company-products`, {
+      const response = await withAuth(`${baseUrl}/company-products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1067,7 +1131,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       if (id) {
         const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-        const response = await fetch(`${baseUrl}/company-products/${id}`, {
+        const response = await withAuth(`${baseUrl}/company-products/${id}`, {
           method: "DELETE"
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1088,7 +1152,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       if (changes.id) {
         const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-        const response = await fetch(`${baseUrl}/company-products/${changes.id}`, {
+        const response = await withAuth(`${baseUrl}/company-products/${changes.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1175,14 +1239,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         formData.append("documents", JSON.stringify(existingDocs));
 
-        const response = await fetch(`${baseUrl}/lab-forms/${tripItemId}/upload`, {
+        const response = await withAuth(`${baseUrl}/lab-forms/${tripItemId}/upload`, {
           method: "POST",
           body: formData
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         savedForm = mapApiLabForm(await response.json());
       } else {
-        const response = await fetch(`${baseUrl}/lab-forms/${tripItemId}`, {
+        const response = await withAuth(`${baseUrl}/lab-forms/${tripItemId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1382,7 +1446,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     try {
       const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await fetch(`${baseUrl}/trips/${input.tripId}/completion`, {
+      const response = await withAuth(`${baseUrl}/trips/${input.tripId}/completion`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

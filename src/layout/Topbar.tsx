@@ -5,6 +5,7 @@ import { Bell } from "lucide-react";
 
 import Button from "../components/ui/Button";
 import { useAppStore } from "../state/useAppStore";
+import { useAuthStore } from "../state/useAuthStore";
 import { navItems } from "./Sidebar";
 
 const roleLabels = {
@@ -15,6 +16,8 @@ const roleLabels = {
 const Topbar = () => {
   const activeRole = useAppStore((state) => state.activeRole);
   const setActiveRole = useAppStore((state) => state.setActiveRole);
+  const logout = useAuthStore((state) => state.logout);
+  const authUser = useAuthStore((state) => state.user);
   const handleRoleChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value as typeof activeRole;
     setActiveRole(value);
@@ -40,20 +43,34 @@ const Topbar = () => {
             aria-label="Bildirimler"
             className="h-10 w-10 p-0"
           />
-          <div className="flex flex-col">
-            <label htmlFor="role" className="text-xs text-slate-500">
-              Rol
-            </label>
-            <select
-              id="role"
-              value={activeRole}
-              onChange={handleRoleChange}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/40"
-            >
-              <option value="admin">{roleLabels.admin}</option>
-              <option value="lab">{roleLabels.lab}</option>
-            </select>
-          </div>
+          {authUser ? (
+            <div className="flex flex-col items-end">
+              <span className="text-xs text-slate-500">{authUser.email}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-700">
+                  {roleLabels[authUser.role] ?? authUser.role}
+                </span>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  Çıkış
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <label htmlFor="role" className="text-xs text-slate-500">
+                Rol
+              </label>
+              <select
+                id="role"
+                value={activeRole}
+                onChange={handleRoleChange}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/40"
+              >
+                <option value="admin">{roleLabels.admin}</option>
+                <option value="lab">{roleLabels.lab}</option>
+              </select>
+            </div>
+          )}
         </div>
       </div>
       <nav className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-600">
