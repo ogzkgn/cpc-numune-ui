@@ -22,7 +22,10 @@ const LoginPage = () => {
   useEffect(() => {
     if (user) {
       setActiveRole(user.role);
-      const target = (location.state as any)?.from?.pathname ?? "/";
+      const target =
+        user.role === "lab"
+          ? "/laboratuvar"
+          : (location.state as any)?.from?.pathname ?? "/";
       navigate(target, { replace: true });
     }
   }, [user, navigate, location.state, setActiveRole]);

@@ -2,9 +2,13 @@ import { useState } from "react";
 
 import LabInboxView from "../features/laboratory/LabInboxView";
 import LabProcessingView from "../features/laboratory/LabProcessingView";
+import { useAppStore } from "../state/useAppStore";
 
 const LaboratoryPage = () => {
   const [activeTab, setActiveTab] = useState<"processing" | "inbox">("processing");
+  const activeRole = useAppStore((state) => state.activeRole);
+  const processingLabel = activeRole === "lab" ? "Gelen Numuneler" : "Gönderilen Numuneler";
+  const inboxLabel = activeRole === "lab" ? "Gönderilen Numuneler" : "Gelen Numuneler";
 
   return (
     <div className="space-y-6">
@@ -17,7 +21,7 @@ const LaboratoryPage = () => {
           }`}
           onClick={() => setActiveTab("processing")}
         >
-          Gönderilenler
+          {processingLabel}
         </button>
         <button
           className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
@@ -27,7 +31,7 @@ const LaboratoryPage = () => {
           }`}
           onClick={() => setActiveTab("inbox")}
         >
-          Gelenler
+          {inboxLabel}
         </button>
       </div>
 
