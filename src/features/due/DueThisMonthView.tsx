@@ -8,6 +8,9 @@ import Drawer from "../../components/ui/Drawer";
 import Table from "../../components/ui/Table";
 import Chip from "../../components/ui/Chip";
 import { useAppStore } from "../../state/useAppStore";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
 import { formatDate, calculateNextDueDate, getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
 import { getProductTypeLabel, paymentStatusLabels, paymentStatusTokens } from "../../utils/labels";
 import { buildSampleCounts, getAnnualRequiredSampleCount } from "../../utils/samples";
@@ -76,20 +79,16 @@ const DueThisMonthView = () => {
   const [isFilterOpen, setFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const loadProducts = useAppStore((state) => state.loadProducts);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const products = useAppStore((state) => state.products);
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: tripsData } = useTripsQuery();
   const openTripPlanner = useAppStore((state) => state.openTripPlanner);
   const addToast = useAppStore((state) => state.addToast);
-  const tripItems = useAppStore((state) => state.tripItems);
+  const tripItems = tripsData?.tripItems ?? [];
 
   useEffect(() => {
-    loadProducts();
-    loadCompanyProductRecords();
-    loadTrips();
-  }, [loadProducts, loadCompanyProductRecords, loadTrips]);
+    // data is fetched via React Query hooks
+  }, []);
 
   const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -811,8 +810,6 @@ const DueThisMonthView = () => {
 };
 
 export default DueThisMonthView;
-
-
 
 
 

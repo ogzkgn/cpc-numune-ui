@@ -5,7 +5,6 @@ import type {
   CompanyProductStatus,
   Product,
   ProductType,
-  TripCompletion,
   TripItem,
   TripDutyType
 } from "../types";

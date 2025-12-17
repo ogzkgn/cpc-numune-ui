@@ -56,7 +56,12 @@ router.get("/", async (req, res) => {
       params
     );
 
-    const formsResult = await pool.query(`SELECT * FROM lab_forms`);
+    const tripItemIds = tripItemsResult.rows.map((row) => row.id);
+    let formsResult = { rows: [] };
+    if (tripItemIds.length > 0) {
+      const placeholders = tripItemIds.map((_, index) => `$${index + 1}`).join(", ");
+      formsResult = await pool.query(`SELECT * FROM lab_forms WHERE trip_item_id IN (${placeholders})`, tripItemIds);
+    }
 
     res.json({
       tripItems: tripItemsResult.rows.map((row) => ({

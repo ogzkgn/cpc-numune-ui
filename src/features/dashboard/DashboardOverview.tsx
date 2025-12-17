@@ -1,34 +1,35 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
+import { useQueries } from "@tanstack/react-query";
 
 import Card from "../../components/ui/Card";
 import { AlertTriangle, Clock4, FlaskRound, SendHorizonal, ShieldAlert } from "lucide-react";
-import { useAppStore } from "../../state/useAppStore";
 import { getPriorityFlag, getInspectionPriorityFlag } from "../../utils/date";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
 import type { CompanyProduct } from "../../types";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { fetchTripCompletion, tripCompletionQueryKey } from "../../queries/useTripCompletionQuery";
 
 const DashboardOverview = () => {
-  const companyProducts = useAppStore((state) => state.companyProducts);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const loadProducts = useAppStore((state) => state.loadProducts);
-  const trips = useAppStore((state) => state.trips);
-  const tripCompletions = useAppStore((state) => state.tripCompletions);
-  const tripItems = useAppStore((state) => state.tripItems);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const loadTripCompletion = useAppStore((state) => state.loadTripCompletion);
-  const { productMap } = useEntityMaps();
-
-  useEffect(() => {
-    loadProducts();
-    loadCompanyProductRecords();
-    loadTrips();
-    // load all trip completions in background
-    trips.forEach((trip) => loadTripCompletion(trip.id));
-  }, [loadProducts, loadCompanyProductRecords, loadTrips, loadTripCompletion, trips]);
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: tripsData } = useTripsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const trips = tripsData?.trips ?? [];
+  const tripItems = tripsData?.tripItems ?? [];
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const completionQueries = useQueries({
+    queries: trips.map((trip) => ({
+      queryKey: tripCompletionQueryKey(trip.id),
+      queryFn: () => fetchTripCompletion(trip.id),
+      staleTime: 60_000
+    }))
+  });
+  const tripCompletions = completionQueries
+    .map((query) => query.data)
+    .filter((value): value is NonNullable<typeof value> => Boolean(value));
 
   const metrics = useMemo(() => {
-    const sourceRecords = companyProductRecords.length > 0 ? companyProductRecords : companyProducts;
+    const sourceRecords = companyProductRecords;
 
     const activeRecords = sourceRecords
       .map((rec) => {
@@ -106,7 +107,7 @@ const DashboardOverview = () => {
       completedTrips,
       labCounts
     };
-  }, [companyProducts, companyProductRecords, productMap, trips, tripCompletions, tripItems]);
+  }, [companyProductRecords, productMap, trips, tripCompletions, tripItems]);
 
   const Stat = ({
     label,

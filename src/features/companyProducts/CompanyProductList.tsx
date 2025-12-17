@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Edit3, Filter, RotateCw, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Edit3, Filter, RotateCw, Trash2, Upload, Download } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -7,6 +7,14 @@ import Modal from "../../components/ui/Modal";
 import Drawer from "../../components/ui/Drawer";
 import Table from "../../components/ui/Table";
 import Chip from "../../components/ui/Chip";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import {
+  useCreateCompanyProductRecordMutation,
+  useUpdateCompanyProductRecordMutation,
+  useDeleteCompanyProductRecordMutation
+} from "../../queries/useCompanyProductRecordMutations";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { paymentStatusLabels, paymentStatusTokens, getProductTypeLabel, productTypeLabels } from "../../utils/labels";
@@ -72,16 +80,18 @@ const emptyEditorState: EditorState = {
 };
 
 const CompanyProductList = () => {
-  const records = useAppStore((state) => state.companyProductRecords);
-  const products = useAppStore((state) => state.products);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const tripItems = useAppStore((state) => state.tripItems);
-  const loadProducts = useAppStore((state) => state.loadProducts);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const addRecord = useAppStore((state) => state.addCompanyProductRecord);
-  const updateRecord = useAppStore((state) => state.updateCompanyProductRecord);
-  const deleteRecord = useAppStore((state) => state.deleteCompanyProductRecord);
+  const {
+    data: records = [],
+    refetch: refetchCompanyProductRecords
+  } = useCompanyProductRecordsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: tripsData } = useTripsQuery();
+  const activeRole = useAppStore((state) => state.activeRole);
+  const tripItems = tripsData?.tripItems ?? [];
   const addToast = useAppStore((state) => state.addToast);
+  const createRecordMutation = useCreateCompanyProductRecordMutation();
+  const updateRecordMutation = useUpdateCompanyProductRecordMutation();
+  const deleteRecordMutation = useDeleteCompanyProductRecordMutation();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isFilterOpen, setFilterOpen] = useState(false);
@@ -104,6 +114,13 @@ const CompanyProductList = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<
+    { inserted: number; total: number; errors: { line: number; error: string }[] } | null
+  >(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const availableProductTypes = useMemo(() => {
     const types = new Set<ProductType>();
     products.forEach((product) => {
@@ -140,12 +157,6 @@ const CompanyProductList = () => {
     });
     return Array.from(values);
   }, [records]);
-
-  useEffect(() => {
-    loadProducts();
-    loadCompanyProductRecords();
-    loadTrips();
-  }, [loadProducts, loadCompanyProductRecords, loadTrips]);
 
   const filtered = useMemo(() => {
     let base = records;
@@ -430,11 +441,62 @@ const CompanyProductList = () => {
     setModalOpen(true);
   };
 
+  const handleImportSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setImportError(null);
+    setImportResult(null);
+    if (!importFile) {
+      setImportError("Lütfen bir dosya seçin");
+      return;
+    }
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      const response = await fetch(`${baseUrl}/company-products-import/import`, {
+        method: "POST",
+        credentials: "include",
+        body: formData
+      });
+      if (!response.ok) {
+        let msg = `HTTP ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data?.error) msg = data.error;
+        } catch (_err) {
+          // ignore
+        }
+        throw new Error(msg);
+      }
+      const data = await response.json();
+      setImportResult({
+        inserted: data.inserted ?? 0,
+        total: data.total ?? 0,
+        errors: Array.isArray(data.errors) ? data.errors : []
+      });
+      await refetchCompanyProductRecords();
+      setImportFile(null);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "İçe aktarma başarısız");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleDeleteRecord = (record: CompanyProductRecord) => {
-    const key = buildRecordKey(record);
     if (!window.confirm("Bu firma-ürün kaydını silmek istediğinize emin misiniz?")) return;
-    deleteRecord(key, record.id);
-    addToast({ title: "Firma-ürün kaydı silindi", variant: "success" });
+    if (!record.id) {
+      addToast({ title: "Silinecek kaydın ID'si bulunamadı", variant: "error" });
+      return;
+    }
+    deleteRecordMutation
+      .mutateAsync({ id: record.id })
+      .then(() => addToast({ title: "Firma-ürün kaydı silindi", variant: "success" }))
+      .catch((error) => {
+        console.error("Company product delete failed", error);
+        addToast({ title: "Firma-ürün kaydı silinemedi", variant: "error" });
+      });
   };
 
   const updateEditorField = <K extends keyof EditorState>(field: K, value: EditorState[K]) => {
@@ -496,12 +558,17 @@ const CompanyProductList = () => {
       return;
     }
 
-    if (isCreating) {
-      await addRecord(payload);
-      addToast({ title: "Firma-ürün kaydı oluşturuldu", variant: "success" });
-    } else if (selectedKey) {
-      await updateRecord(selectedKey, { ...payload, id: selectedRecordId ?? undefined });
-      addToast({ title: "Firma-ürün kaydı güncellendi", variant: "success" });
+    try {
+      if (isCreating) {
+        await createRecordMutation.mutateAsync(payload);
+        addToast({ title: "Firma-ürün kaydı oluşturuldu", variant: "success" });
+      } else if (selectedKey && selectedRecordId) {
+        await updateRecordMutation.mutateAsync({ ...payload, id: selectedRecordId });
+        addToast({ title: "Firma-ürün kaydı güncellendi", variant: "success" });
+      }
+    } catch (error) {
+      console.error("Company product mutation failed", error);
+      addToast({ title: "Kayıt kaydedilemedi", variant: "error" });
     }
 
     closeModal();
@@ -515,6 +582,11 @@ const CompanyProductList = () => {
           <p className="text-sm text-slate-500">Ürün tipi bazlı yeni tablo yapısını önizleyin ve düzenleyin</p>
         </div>
         <div className="flex gap-2">
+          {activeRole === "admin" ? (
+            <Button variant="secondary" size="sm" icon={<Upload className="h-4 w-4" />} onClick={() => setImportOpen(true)}>
+              Excel İçe Aktar
+            </Button>
+          ) : null}
           <Button variant="ghost" size="sm" icon={<RotateCw className="h-4 w-4" />} onClick={handleResetFilters}>
             Sıfırla
           </Button>
@@ -774,6 +846,61 @@ const CompanyProductList = () => {
           </div>
         </div>
       </Drawer>
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Excel ile İçe Aktar">
+        <form className="space-y-4" onSubmit={handleImportSubmit}>
+          <p className="text-sm text-slate-600">
+            Excel dosyanız <code>company_products</code> tablosundaki sütun adlarıyla eşleşmelidir.
+          </p>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+            <span>Şablon dosya</span>
+            <a
+              href={`${import.meta.env.VITE_API_URL ?? "http://localhost:4000"}/company-products-import/template`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-brand-primary underline"
+            >
+              <Download className="h-4 w-4" />
+              Şablonu indir
+            </a>
+          </div>
+          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+            Dosya (xlsx, xls, csv)
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+          {importError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{importError}</div>
+          ) : null}
+          {importResult ? (
+            <div className="space-y-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              <p>
+                Toplam: {importResult.total} satır, eklenen: {importResult.inserted}, hata: {importResult.errors.length}
+              </p>
+              {importResult.errors.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto rounded border border-green-200 bg-white/60 p-2 text-slate-800">
+                  {importResult.errors.map((err, idx) => (
+                    <div key={`${err.line}-${idx}`} className="text-xs">
+                      Satır {err.line}: {err.error}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" type="button" onClick={() => setImportOpen(false)}>
+              Kapat
+            </Button>
+            <Button type="submit" disabled={importing}>
+              {importing ? "Yükleniyor..." : "İçe aktar"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
       <Modal
         open={modalOpen}
         onClose={closeModal}

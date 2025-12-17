@@ -7,12 +7,17 @@ import Drawer from "../../components/ui/Drawer";
 import Modal from "../../components/ui/Modal";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
 import { formatDate } from "../../utils/date";
 import { labStatusLabels, labStatusTokens, getProductTypeLabel } from "../../utils/labels";
 import { SHIPMENT_FIELDS, getFieldConfig } from "./labConstants";
 import { Filter, RotateCw } from "lucide-react";
 import LabFormDetails from "./components/LabFormDetails";
+import { useLabItemsQuery, useUpsertLabFormMutation } from "../../queries/useLabItemsQuery";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useLabsQuery } from "../../queries/useLabsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useUpdateTripItemLabStatusMutation } from "../../queries/useTripMutations";
 import type { TableColumn } from "../../components/ui/Table";
 import type { LabFormDocument, ProductType, TripItem } from "../../types";
 
@@ -37,17 +42,18 @@ type PendingEntry = {
 };
 
 const LabProcessingView = () => {
-  const tripItems = useAppStore((state) => state.tripItems);
-  const labForms = useAppStore((state) => state.labForms);
   const activeRole = useAppStore((state) => state.activeRole);
   const addToast = useAppStore((state) => state.addToast);
-  const upsertLabForm = useAppStore((state) => state.upsertLabForm);
-  const loadLabItems = useAppStore((state) => state.loadLabItems);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const { productMap } = useEntityMaps();
-  const labs = useAppStore((state) => state.labs);
-  const loadLabs = useAppStore((state) => state.loadLabs);
+  const { data: labItemsData } = useLabItemsQuery("processing", activeRole);
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: tripsData } = useTripsQuery(activeRole !== "lab", activeRole);
+  const { data: labs = [] } = useLabsQuery();
+  const { data: products = [] } = useProductsQuery(activeRole !== "lab");
+  const upsertLabForm = useUpsertLabFormMutation("processing", activeRole);
+  const updateTripItemLabStatus = useUpdateTripItemLabStatusMutation();
+  const tripItems = labItemsData?.tripItems ?? [];
+  const labForms = labItemsData?.labForms ?? [];
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
   const recordMap = useMemo(() => new Map(companyProductRecords.map((rec) => [rec.id, rec])), [companyProductRecords]);
 
@@ -420,12 +426,6 @@ const LabProcessingView = () => {
     standardNo: selectedItem?.productStandard
   });
 
-  useEffect(() => {
-    loadLabItems("processing");
-    loadCompanyProductRecords();
-    loadLabs();
-  }, [loadLabItems, loadCompanyProductRecords, loadLabs]);
-
   const canSubmit =
     allowEdit &&
     selectedItem !== null &&
@@ -441,24 +441,38 @@ const LabProcessingView = () => {
   const handleSubmit = () => {
     if (!allowEdit || !selectedItem || !canSubmit) return;
 
-    upsertLabForm({
-      tripItemId: selectedItem.item.id,
-      standardNo: selectedItem.productStandard,
-      data: { ...formValues },
-      status: "WAITING_CONFIRM",
-      labNotes: labNotes || undefined,
-      cpcNotes: selectedItem.cpcNotes,
-      documents: documents.map((doc) => ({ ...doc }))
-    });
-    addToast({
-      title: "Form onaya gönderildi",
-      description: isLabUser
-        ? selectedItem.productName
-        : `${selectedItem.companyName} - ${selectedItem.productName}`,
-      variant: "success"
-    });
-    setSelectedItem(null);
-    setDocuments([]);
+    upsertLabForm.mutate(
+      {
+        tripItemId: selectedItem.item.id,
+        standardNo: selectedItem.productStandard,
+        data: { ...formValues },
+        status: "WAITING_CONFIRM",
+        labNotes: labNotes || undefined,
+        cpcNotes: selectedItem.cpcNotes,
+        documents: documents.map((doc) => ({ ...doc }))
+      },
+      {
+        onSuccess: async () => {
+          await updateTripItemLabStatus.mutateAsync({ tripItemId: selectedItem.item.id, status: "WAITING_CONFIRM" });
+          addToast({
+            title: "Form onaya gönderildi",
+            description: isLabUser
+              ? selectedItem.productName
+              : `${selectedItem.companyName} - ${selectedItem.productName}`,
+            variant: "success"
+          });
+          setSelectedItem(null);
+          setDocuments([]);
+        },
+        onError: (error) => {
+          addToast({
+            title: "Form kaydedilemedi",
+            description: (error as Error).message,
+            variant: "error"
+          });
+        }
+      }
+    );
   };
 
   const shipmentDetails = selectedItem?.item.labShipmentDetails ?? null;

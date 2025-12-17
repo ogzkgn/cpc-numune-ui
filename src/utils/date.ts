@@ -1,9 +1,7 @@
 import {
   addMonths,
   differenceInCalendarMonths,
-  endOfMonth,
   format,
-  isAfter,
   parseISO,
   startOfMonth
 } from "date-fns";
@@ -18,19 +16,6 @@ const SAMPLING_INTERVAL_MONTHS: Record<ProductType, number> = {
   fly_ash: 2
 };
 
-const APPROACHING_THRESHOLD: Record<ProductType, number> = {
-  concrete: 3,
-  cement: 1,
-  slag: 1,
-  fly_ash: 1
-};
-
-const OVERDUE_THRESHOLD: Record<ProductType, number> = {
-  concrete: 4,
-  cement: 2,
-  slag: 2,
-  fly_ash: 2
-};
 
 export const getSamplingIntervalMonths = (productType: ProductType, status: CompanyProductStatus = "devam") => {
   if (status === "iptal" || status === "aski") {

@@ -66,8 +66,21 @@ const mapTripItemRow = (row) => ({
   labEntryCode: row.lab_entry_code ?? undefined
 });
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
+    const params = [];
+    const whereClauses = [];
+    if (req.user?.role === "lab" && req.user.labId) {
+      params.push(req.user.labId);
+      whereClauses.push(
+        `EXISTS (
+           SELECT 1 FROM trip_items ti
+           WHERE ti.trip_id = t.id AND ti.lab_assigned_lab_id = $${params.length}
+         )`
+      );
+    }
+    const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
     const result = await pool.query(
       `SELECT
          t.*,
@@ -76,8 +89,10 @@ router.get("/", async (_req, res) => {
        FROM trips t
        LEFT JOIN trip_duty_assignments d ON d.trip_id = t.id
        LEFT JOIN trip_items ti ON ti.trip_id = t.id
+       ${where}
        GROUP BY t.id
-       ORDER BY t.planned_at DESC`
+       ORDER BY t.planned_at DESC`,
+      params
     );
 
     const trips = result.rows.map((row) => ({
@@ -279,6 +294,14 @@ router.get("/:id/completion", async (req, res) => {
   if (!id) return res.status(400).json({ error: "Valid id is required" });
 
   try {
+    if (req.user?.role === "lab" && req.user.labId) {
+      const tripCheck = await pool.query(
+        "SELECT 1 FROM trip_items WHERE trip_id = $1 AND lab_assigned_lab_id = $2 LIMIT 1",
+        [id, req.user.labId]
+      );
+      if (tripCheck.rowCount === 0) return res.status(403).json({ error: "Forbidden" });
+    }
+
     const headerResult = await pool.query(`SELECT * FROM trip_completions WHERE trip_id = $1`, [id]);
     if (headerResult.rowCount === 0) return res.json(null);
 
@@ -312,6 +335,17 @@ router.put("/:id/completion", async (req, res) => {
 
   const client = await pool.connect();
   try {
+    if (req.user?.role === "lab" && req.user.labId) {
+      const tripCheck = await client.query(
+        "SELECT 1 FROM trip_items WHERE trip_id = $1 AND lab_assigned_lab_id = $2 LIMIT 1",
+        [id, req.user.labId]
+      );
+      if (tripCheck.rowCount === 0) {
+        client.release();
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
     await client.query("BEGIN");
 
     const upsertResult = await client.query(

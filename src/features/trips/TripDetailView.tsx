@@ -7,7 +7,15 @@ import Badge from "../../components/ui/Badge";
 import Modal from "../../components/ui/Modal";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useEmployeesQuery } from "../../queries/useEmployeesQuery";
+import {
+  useMarkSamplesTakenMutation,
+  useUpdateTripItemLabStatusMutation,
+  useUpdateTripStatusMutation
+} from "../../queries/useTripMutations";
 import { formatDate } from "../../utils/date";
 import { employeeStatusTokens, labStatusLabels, labStatusTokens, tripStatusLabels, tripStatusTokens } from "../../utils/labels";
 import type { TableColumn } from "../../components/ui/Table";
@@ -18,15 +26,17 @@ const TripDetailView = () => {
   const navigate = useNavigate();
   const numericId = Number(tripId);
 
-  const trip = useAppStore((state) => state.trips.find((item) => item.id === numericId));
-  const tripItems = useAppStore((state) => state.tripItems.filter((item) => item.tripId === numericId));
-  const employees = useAppStore((state) => state.employees);
-  const companyProducts = useAppStore((state) => state.companyProducts);
-  const markSampleTaken = useAppStore((state) => state.markSampleTaken);
-  const updateTripStatus = useAppStore((state) => state.updateTripStatus);
-  const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
+  const { data: tripsData } = useTripsQuery();
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: employees = [] } = useEmployeesQuery();
+  const trip = tripsData?.trips.find((item) => item.id === numericId);
+  const tripItems = tripsData?.tripItems.filter((item) => item.tripId === numericId) ?? [];
   const addToast = useAppStore((state) => state.addToast);
-  const { productMap, companyMap } = useEntityMaps();
+  const updateTripStatus = useUpdateTripStatusMutation();
+  const updateTripItemLabStatus = useUpdateTripItemLabStatusMutation();
+  const markSamplesTaken = useMarkSamplesTakenMutation();
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [sampleModalOpen, setSampleModalOpen] = useState(false);
@@ -37,16 +47,15 @@ const TripDetailView = () => {
     if (!trip) return null;
 
     const items = tripItems.map((item) => {
-      const cp = companyProducts.find((cpItem) => cpItem.id === item.companyProductId);
-      const product = cp ? productMap.get(cp.productId) : undefined;
-      const company = cp ? companyMap.get(cp.companyId) : undefined;
+      const record = companyProductRecords.find((rec) => rec.id === item.companyProductId);
+      const product = record?.productId ? productMap.get(record.productId) : undefined;
      
 
       return {
         item,
-        cp,
+        cp: record,
         product,
-        company,
+        companyName: record?.companyName,
       };
     });
 
@@ -57,13 +66,13 @@ const TripDetailView = () => {
       items,
       completed
     };
-  }, [trip, tripItems, companyProducts, productMap, companyMap]);
+  }, [trip, tripItems, companyProductRecords, productMap]);
 
   if (!trip || !tripSummary) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold text-slate-900">Seyahat bulunamadÄ±</h1>
-        <Button onClick={() => navigate(-1)}>Geri DÃ¶n</Button>
+        <h1 className="text-2xl font-semibold text-slate-900">Seyahat bulunamadı</h1>
+        <Button onClick={() => navigate(-1)}>Geri Dön</Button>
       </div>
     );
   }
@@ -84,7 +93,7 @@ const TripDetailView = () => {
     {
       id: "company",
       header: "Firma",
-      cell: (row) => row.company?.name ?? "-"
+      cell: (row) => row.companyName ?? "-"
     },
     {
       id: "product",
@@ -149,19 +158,38 @@ const TripDetailView = () => {
     setSampleModalOpen(true);
   };
 
-  const confirmSample = () => {
+  const confirmSample = async () => {
     const payload = Array.from(selectedItemIds).map((id) => ({
       tripItemId: id,
       sampledAt: sampleDate
     }));
-    markSampleTaken(payload);
-    setSampleModalOpen(false);
-    addToast({ title: "Numune bilgisi gÃ¼ncellendi", variant: "success" });
+    try {
+      await markSamplesTaken.mutateAsync(payload);
+      setSampleModalOpen(false);
+      addToast({ title: "Numune bilgisi güncellendi", variant: "success" });
+    } catch (error) {
+      addToast({
+        title: "Numune güncellenemedi",
+        description: (error as Error).message,
+        variant: "error"
+      });
+    }
   };
 
-  const handleSendToLab = (itemId: number) => {
-    updateTripItemLabStatus(itemId, "PENDING", { sentAt: new Date().toISOString() });
-    addToast({ title: "Numune laboratuvara gÃ¶nderildi", variant: "info" });
+  const handleSendToLab = async (itemId: number) => {
+    try {
+      await updateTripItemLabStatus.mutateAsync({
+        tripItemId: itemId,
+        status: "PENDING"
+      });
+      addToast({ title: "Numune laboratuvara gönderildi", variant: "info" });
+    } catch (error) {
+      addToast({
+        title: "Numune gönderilemedi",
+        description: (error as Error).message,
+        variant: "error"
+      });
+    }
   };
 
   const selectedAssignees = trip.assigneeIds
@@ -201,8 +229,10 @@ const TripDetailView = () => {
             variant="ghost"
             icon={<ShieldCheck className="h-4 w-4" />}
             onClick={() => {
-              updateTripStatus(trip.id, "ACTIVE");
-              addToast({ title: "Seyahat aktifleÅŸtirildi", variant: "info" });
+              updateTripStatus
+                .mutateAsync({ tripId: trip.id, status: "ACTIVE" })
+                .then(() => addToast({ title: "Seyahat aktifleştirildi", variant: "info" }))
+                .catch((error) => addToast({ title: "Seyahat aktifleştirilemedi", description: (error as Error).message, variant: "error" }));
             }}
             disabled={trip.status === "ACTIVE"}
           >

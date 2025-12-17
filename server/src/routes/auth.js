@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db/client");
 const { COOKIE_NAME } = require("../middleware/auth");
+const { rateLimit } = require("../middleware/rateLimit");
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
@@ -23,17 +24,24 @@ const setAuthCookie = (res, token) => {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: "lax",
+    sameSite: "strict",
     maxAge: maxAgeMs
   });
 };
 
-router.post("/login", async (req, res) => {
+router.post(
+  "/login",
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: "Çok fazla giriş denemesi. Lütfen bekleyin." }),
+  async (req, res) => {
   const { email, password } = req.body || {};
   const normalizedEmail = (email || "").trim().toLowerCase();
 
   if (!normalizedEmail || !password) {
     return res.status(400).json({ error: "email and password are required" });
+  }
+  const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  if (!emailRegex.test(normalizedEmail)) {
+    return res.status(400).json({ error: "invalid email" });
   }
 
   try {
@@ -57,7 +65,8 @@ router.post("/login", async (req, res) => {
     console.error("Login failed:", error);
     res.status(500).json({ error: "Login failed" });
   }
-});
+}
+);
 
 router.post("/logout", (_req, res) => {
   res.clearCookie(COOKIE_NAME, {

@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Filter, RotateCw, Send } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Table from "../../components/ui/Table";
 import Modal from "../../components/ui/Modal";
 import Drawer from "../../components/ui/Drawer";
+import { useLabsQuery } from "../../queries/useLabsQuery";
+import { usePendingSamplesQuery } from "../../queries/usePendingSamplesQuery";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useUpsertLabShipmentMutation } from "../../queries/useTripMutations";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { getProductTypeLabel } from "../../utils/labels";
@@ -27,13 +32,13 @@ type SampleRow = {
 };
 
 const TripSamplesPanel = () => {
-  const pendingSamples = useAppStore((state) => state.pendingSamples);
-  const loadPendingSamples = useAppStore((state) => state.loadPendingSamples);
-  const tripItems = useAppStore((state) => state.tripItems);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const labs = useAppStore((state) => state.labs);
-  const loadLabs = useAppStore((state) => state.loadLabs);
-  const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
+  const { data: pendingSamples = [] } = usePendingSamplesQuery();
+  const { data: labs = [] } = useLabsQuery();
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const activeRole = useAppStore((state) => state.activeRole);
+  const { data: tripsData } = useTripsQuery(activeRole !== "lab", activeRole);
+  const tripItems = tripsData?.tripItems ?? [];
+  const upsertLabShipment = useUpsertLabShipmentMutation();
   const addToast = useAppStore((state) => state.addToast);
 
   const createEmptyLabForm = (): LabShipmentDetails => ({
@@ -56,11 +61,6 @@ const TripSamplesPanel = () => {
     productName: undefined as string | undefined,
     performedFrom: undefined as string | undefined
   });
-
-  useEffect(() => {
-    loadPendingSamples();
-    loadLabs();
-  }, [loadPendingSamples, loadLabs]);
 
   const handleSendToLab = (row: SampleRow) => {
     setActiveRow(row);
@@ -227,15 +227,25 @@ const TripSamplesPanel = () => {
     }
 
     setSaving(true);
-    await updateTripItemLabStatus(activeRow.tripItemId, "SUBMITTED", {
-      sentAt: new Date().toISOString(),
-      shipment: { ...labForm, sealNo: seal },
-      labId: Number(selectedLabId),
-      labEntryCode: pendingEntryCode
-    });
-    await loadPendingSamples();
-    addToast({ title: "Numune laboratuvara gönderildi", description: "Gönderim bilgileri kaydedildi.", variant: "info" });
-    resetModal();
+    try {
+      await upsertLabShipment.mutateAsync({
+        tripItemId: activeRow.tripItemId,
+        labId: Number(selectedLabId),
+        labEntryCode: pendingEntryCode,
+        sentAt: new Date().toISOString(),
+        sealNo: seal,
+        weight: labForm.weight,
+        cpcNote: labForm.cpcNote,
+        labStatus: "SUBMITTED"
+      });
+      addToast({ title: "Numune laboratuvara gönderildi", description: "Gönderim bilgileri kaydedildi.", variant: "info" });
+      resetModal();
+    } catch (error) {
+      console.error("Lab shipment failed", error);
+      addToast({ title: "Gönderim başarısız", variant: "error" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

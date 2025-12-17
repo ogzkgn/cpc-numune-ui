@@ -1,5 +1,11 @@
 ﻿import { create } from "zustand";
 
+import { queryClient } from "../lib/queryClient";
+import { fetchCompanyProductRecords, companyProductRecordsQueryKey } from "../queries/useCompanyProductRecordsQuery";
+import { fetchEmployees, employeesQueryKey } from "../queries/useEmployeesQuery";
+import { fetchProducts, productsQueryKey } from "../queries/useProductsQuery";
+import { fetchTrips, scopedTripsQueryKey } from "../queries/useTripsQuery";
+import { fetchPendingSamples, pendingSamplesQueryKey } from "../queries/usePendingSamplesQuery";
 import { generateLabEntryCode } from "../utils/samples";
 import type {
   Company,
@@ -298,12 +304,6 @@ interface AppState {
   loadProducts: () => Promise<void>;
   loadTrips: () => Promise<void>;
   loadPendingSamples: () => Promise<void>;
-  loadLabItems: (status?: "processing" | "inbox") => Promise<void>;
-  loadLabs: () => Promise<void>;
-  addLab: (input: Omit<Lab, "id">) => Promise<LabAuthResult | undefined>;
-  updateLab: (id: number, changes: Omit<Lab, "id">) => Promise<LabAuthResult | undefined>;
-  deleteLab: (id: number) => Promise<void>;
-  loadTripCompletion: (tripId: number) => Promise<void>;
   loadEmployees: () => Promise<void>;
   loadCompanyProductRecords: () => Promise<void>;
   addProduct: (input: CreateProductInput) => Promise<void>;
@@ -361,13 +361,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadProducts: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/products`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as any[];
-      set({ products: data.map((item) => mapApiProduct(item)) });
+      const data = await queryClient.fetchQuery({
+        queryKey: productsQueryKey,
+        queryFn: fetchProducts
+      });
+      set({ products: data });
     } catch (error) {
       console.error("Ürünler yüklenemedi, boş liste kullanılacak.", error);
       set({ products: [] });
@@ -376,32 +374,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadTrips: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/trips`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as any[];
-      const mappedTrips: Trip[] = [];
-      const mappedTripItems: TripItem[] = [];
-
-      data.forEach((row) => {
-        const duties = Array.isArray(row.duties) ? row.duties : [];
-        const items = Array.isArray(row.items) ? row.items : [];
-        const trip = mapApiTrip(row);
-        trip.dutyAssignments = buildDutyAssignments(duties);
-        mappedTrips.push(trip);
-        if (items.length > 0) {
-          mappedTripItems.push(...items.map((item: any) => mapApiTripItem(item)));
-        } else {
-          mappedTripItems.push(...buildTripItemsFromDuties(trip.id, duties, generateId));
-        }
+      const { trips, tripItems } = await queryClient.fetchQuery({
+        queryKey: scopedTripsQueryKey(get().activeRole),
+        queryFn: fetchTrips
       });
-
       set((state) => ({
-        trips: mappedTrips,
-        tripItems: mappedTripItems,
-        employees: recalcEmployeeStatuses(state.employees, mappedTrips)
+        trips,
+        tripItems,
+        employees: recalcEmployeeStatuses(state.employees, trips)
       }));
     } catch (error) {
       console.error("Seyahatler yüklenemedi, lokal veriler kullanılacak.", error);
@@ -410,238 +390,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadPendingSamples: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/lab-shipments/pending`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = (await response.json()) as any[];
-      set({
-        pendingSamples: data.map((row) => ({
-          tripItemId: Number(row.tripItemId ?? row.trip_item_id),
-          tripId: Number(row.tripId ?? row.trip_id),
-          companyProductId: Number(row.companyProductId ?? row.company_product_id),
-          companyName: row.companyName ?? row.company_name ?? "-",
-          companyBtCode: row.companyBtCode ?? row.company_bt_code ?? row.btCode ?? row.bt_code,
-          productName: row.productName ?? row.product_name ?? "-",
-          productCode: row.productCode ?? row.product_code ?? undefined,
-          location: row.location ?? undefined,
-          performedAt: row.performedAt ?? row.performed_at ?? "",
-          trackingCode: row.trackingCode ?? row.tracking_code ?? undefined,
-          labStatus: row.labStatus ?? row.lab_status ?? undefined
-        }))
+      const data = await queryClient.fetchQuery({
+        queryKey: pendingSamplesQueryKey,
+        queryFn: fetchPendingSamples
       });
+      set({ pendingSamples: data });
     } catch (error) {
       console.error("Pending lab samples fetch failed.", error);
       set({ pendingSamples: [] });
     }
   },
-
-  loadLabItems: async (status) => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const query = status ? `?status=${status}` : "";
-      const response = await withAuth(`${baseUrl}/lab-items${query}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      const apiTripItems = Array.isArray(data?.tripItems) ? data.tripItems : [];
-      const apiLabForms = Array.isArray(data?.labForms) ? data.labForms : [];
-      set((state) => ({
-        tripItems: (() => {
-          const merged = new Map<number, TripItem>();
-          state.tripItems.forEach((item) => merged.set(item.id, item));
-          apiTripItems.forEach((ti: any) => {
-            const mapped = mapApiTripItem(ti);
-            merged.set(mapped.id, mapped);
-          });
-          return Array.from(merged.values());
-        })(),
-        labForms: apiLabForms.map((form: any) => mapApiLabForm(form))
-      }));
-    } catch (error) {
-      console.error("Lab items fetch failed.", error);
-    }
-  },
-
-  loadLabs: async () => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/labs`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      set({
-        labs: Array.isArray(data)
-          ? data.map((row) => ({
-              id: Number(row.id),
-              name: row.name,
-              city: row.city ?? undefined,
-              email: row.email
-            }))
-          : []
-      });
-    } catch (error) {
-      console.error("Labs fetch failed.", error);
-      // Keep existing labs on failure to avoid blanking out names in UI
-    }
-  },
-
-  addLab: async (input) => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/labs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: input.name, city: (input as any).city, email: (input as any).email })
-      });
-      if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const data = await response.json();
-          if (data?.error) message = data.error;
-        } catch (_err) {
-          // ignore
-        }
-        throw new Error(message);
-      }
-      const payload = await response.json();
-      const { oneTimePassword, ...created } = payload ?? {};
-      const mapped = {
-        id: Number(created.id),
-        name: created.name,
-        city: created.city ?? undefined,
-        email: created.email
-      } as Lab;
-      set((state) => ({ labs: [...state.labs, mapped] }));
-      return { lab: mapped, oneTimePassword: typeof oneTimePassword === "string" ? oneTimePassword : undefined };
-    } catch (error) {
-      console.error("Lab add failed.", error);
-      throw error;
-    }
-  },
-
-  updateLab: async (id, changes) => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/labs/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: changes.name,
-          city: (changes as any).city,
-          email: (changes as any).email
-        })
-      });
-      if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const data = await response.json();
-          if (data?.error) message = data.error;
-        } catch (_err) {
-          // ignore
-        }
-        throw new Error(message);
-      }
-      const payload = await response.json();
-      const { oneTimePassword, ...updated } = payload ?? {};
-      const mapped = {
-        id,
-        name: updated.name,
-        city: updated.city ?? undefined,
-        email: updated.email
-      } as Lab;
-      set((state) => ({
-        labs: state.labs.map((lab) => (lab.id === id ? mapped : lab))
-      }));
-      return { lab: mapped, oneTimePassword: typeof oneTimePassword === "string" ? oneTimePassword : undefined };
-    } catch (error) {
-      console.error("Lab update failed.", error);
-      throw error;
-    }
-  },
-
-  deleteLab: async (id) => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/labs/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      console.error("Lab delete failed.", error);
-    } finally {
-      set((state) => ({ labs: state.labs.filter((lab) => lab.id !== id) }));
-    }
-  },
-
-  loadTripCompletion: async (tripId: number) => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/trips/${tripId}/completion`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (!data) return;
-      const completionRow = data.completion ?? {};
-      const entries = Array.isArray(data.entries) ? data.entries : [];
-      const mappedCompletion: TripCompletion = {
-        tripId,
-        completedByEmployeeIds: (
-          completionRow.completedByEmployeeIds ?? completionRow.completed_by_employee_ids ?? []
-        ).map((v: any) => Number(v)),
-        transportMode: completionRow.transportMode ?? completionRow.transport_mode ?? "BUS",
-        vehiclePlate: completionRow.vehiclePlate ?? completionRow.vehicle_plate ?? undefined,
-        totalKm: completionRow.totalKm ?? completionRow.total_km ?? undefined,
-        totalDays: completionRow.totalDays ?? completionRow.total_days ?? undefined,
-        lodgingProvider: completionRow.lodgingProvider ?? completionRow.lodging_provider ?? undefined,
-        entries: entries.map((entry: any) => {
-          const rawTripItemId =
-            entry.tripItemId ??
-            entry.trip_item_id ??
-            entry.companyProductId ??
-            entry.company_product_id;
-          const rawCompanyProductId =
-            entry.company_product_id ??
-            entry.companyProductId ??
-            entry.tripItemId ??
-            entry.trip_item_id;
-          const companyProductId = Number(rawCompanyProductId);
-          const mappedTripItemId = Number(rawTripItemId);
-        return {
-            tripItemId: Number.isFinite(mappedTripItemId) ? mappedTripItemId : companyProductId,
-            companyProductId,
-            dutyType: entry.dutyType ?? entry.duty_type ?? "NUMUNE",
-            dutyAssigneeIds: (entry.dutyAssigneeIds ?? entry.duty_assignee_ids ?? []).map((v: any) => Number(v)),
-            performedAt: entry.performedAt ?? entry.performed_at ?? undefined,
-            inspectedAt: entry.inspectedAt ?? entry.inspected_at ?? undefined,
-            sampleNotCompleted: entry.sampleNotCompleted ?? entry.sample_not_completed ?? undefined,
-            inspectionNotCompleted: entry.inspectionNotCompleted ?? entry.inspection_not_completed ?? undefined,
-            trackingCode: entry.trackingCode ?? entry.tracking_code ?? undefined,
-            lodgingPaymentAmount: entry.lodgingPaymentAmount ?? entry.lodging_payment_amount ?? undefined,
-            transportExpense: entry.transportExpense ?? entry.transport_expense ?? undefined,
-            mealLunchExpense: entry.mealLunchExpense ?? entry.meal_lunch_expense ?? undefined,
-            mealDinnerExpense: entry.mealDinnerExpense ?? entry.meal_dinner_expense ?? undefined,
-            companyExpense: entry.companyExpense ?? entry.company_expense ?? undefined
-          };
-        }),
-        createdAt: completionRow.createdAt ?? completionRow.created_at
-      };
-
-      set((state) => ({
-        tripCompletions: [
-          ...state.tripCompletions.filter((tc) => tc.tripId !== tripId),
-          mappedCompletion
-        ]
-      }));
-    } catch (error) {
-      console.error("Trip completion fetch failed", error);
-    }
-  },
-
   loadEmployees: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/employees`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as any[];
+      const data = await queryClient.fetchQuery({
+        queryKey: employeesQueryKey,
+        queryFn: fetchEmployees
+      });
       set((state) => ({
-        employees: recalcEmployeeStatuses(data.map((item) => mapApiEmployee(item)), state.trips)
+        employees: recalcEmployeeStatuses(data, state.trips)
       }));
     } catch (error) {
       console.error("Denetçi listesi yüklenemedi, boş liste kullanılacak.", error);
@@ -651,11 +417,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadCompanyProductRecords: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
-      const response = await withAuth(`${baseUrl}/company-products`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = (await response.json()) as any[];
-      set({ companyProductRecords: data.map((item) => mapApiCompanyProductRecord(item)) });
+      const data = await queryClient.fetchQuery({
+        queryKey: companyProductRecordsQueryKey,
+        queryFn: fetchCompanyProductRecords
+      });
+      set({ companyProductRecords: data });
     } catch (error) {
       console.error("Firma-ürün kayıtları yüklenemedi, boş liste kullanılacak.", error);
       set({ companyProductRecords: [] });
@@ -680,6 +446,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const created = mapApiProduct(await response.json());
       set((state) => ({ products: [...state.products, created] }));
+      queryClient.invalidateQueries({ queryKey: productsQueryKey }).catch(() => {
+        // noop
+      });
     } catch (error) {
       console.error("Ürün eklenemedi, lokal ekleme yapılıyor.", error);
       set((state) => ({
@@ -708,6 +477,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         products: state.products.filter((product) => product.id !== id)
       }));
+      queryClient.invalidateQueries({ queryKey: productsQueryKey }).catch(() => {
+        // noop
+      });
     }
   },
 
@@ -731,6 +503,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         employees: recalcEmployeeStatuses([...state.employees, created], state.trips)
       }));
+      queryClient.invalidateQueries({ queryKey: employeesQueryKey }).catch(() => {
+        // noop
+      });
     } catch (error) {
       console.error("Denetçi eklenemedi, lokal ekleme yapılıyor.", error);
       set((state) => ({
@@ -773,6 +548,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           state.trips
         )
       }));
+      queryClient.invalidateQueries({ queryKey: employeesQueryKey }).catch(() => {
+        // noop
+      });
     }
   },
 
@@ -789,6 +567,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         employees: recalcEmployeeStatuses(state.employees.filter((emp) => emp.id !== id), state.trips)
       }));
+      queryClient.invalidateQueries({ queryKey: employeesQueryKey }).catch(() => {
+        // noop
+      });
     }
   },
 
@@ -1113,6 +894,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const created = mapApiCompanyProductRecord(await response.json());
       set((state) => ({ companyProductRecords: [...state.companyProductRecords, created] }));
+      queryClient.invalidateQueries({ queryKey: companyProductRecordsQueryKey }).catch(() => {
+        // noop
+      });
     } catch (error) {
       console.error("Firma-ürün kaydı API ile eklenemedi, lokal ekleme yapılıyor.", error);
       set((state) => ({
@@ -1144,6 +928,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           (record) => getCompanyProductRecordKey(record) !== key
         )
       }));
+      queryClient.invalidateQueries({ queryKey: companyProductRecordsQueryKey }).catch(() => {
+        // noop
+      });
     }
   },
 
@@ -1188,6 +975,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           return { ...record, ...changes };
         })
       }));
+      queryClient.invalidateQueries({ queryKey: companyProductRecordsQueryKey }).catch(() => {
+        // noop
+      });
     }
   },
 
@@ -1197,6 +987,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         getCompanyProductRecordKey(record) === key ? { ...record, status } : record
       )
     }));
+    queryClient.invalidateQueries({ queryKey: companyProductRecordsQueryKey }).catch(() => {
+      // noop
+    });
   },
 
   upsertLabForm: async ({ tripItemId, standardNo, data, status, labNotes, cpcNotes, documents }) => {

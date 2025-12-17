@@ -1,10 +1,14 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { CheckCircle2, CircleOff, Edit, FileText, Info, Route as RouteIcon } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Modal from "../../components/ui/Modal";
 import Table from "../../components/ui/Table";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useEmployeesQuery } from "../../queries/useEmployeesQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useUpdateTripMutation, useUpdateTripStatusMutation } from "../../queries/useTripMutations";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { tripStatusLabels, tripStatusTokens } from "../../utils/labels";
@@ -37,27 +41,15 @@ const TripListView = () => {
   const [summaryTripId, setSummaryTripId] = useState<number | null>(null);
   const [financePreviewTripId, setFinancePreviewTripId] = useState<number | null>(null);
 
-  const trips = useAppStore((state) => state.trips);
-  const tripItems = useAppStore((state) => state.tripItems);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const employees = useAppStore((state) => state.employees);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const loadEmployees = useAppStore((state) => state.loadEmployees);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const loadTripCompletion = useAppStore((state) => state.loadTripCompletion);
-  const updateTripStatus = useAppStore((state) => state.updateTripStatus);
-  const updateTrip = useAppStore((state) => state.updateTrip);
+  const { data: tripsData } = useTripsQuery();
+  const { data: employees = [] } = useEmployeesQuery();
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const trips = tripsData?.trips ?? [];
+  const tripItems = tripsData?.tripItems ?? [];
+  const updateTripStatus = useUpdateTripStatusMutation();
+  const updateTrip = useUpdateTripMutation();
   const addToast = useAppStore((state) => state.addToast);
-
-  useEffect(() => {
-    loadTrips();
-    loadEmployees();
-    loadCompanyProductRecords();
-  }, [loadTrips, loadEmployees, loadCompanyProductRecords]);
-
-  useEffect(() => {
-    trips.forEach((trip) => loadTripCompletion(trip.id));
-  }, [trips, loadTripCompletion]);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const locationByCompanyProductId = useMemo(() => {
     const map = new Map<number, string>();
@@ -155,15 +147,23 @@ const TripListView = () => {
     setEditNotes(trip.notes ?? "");
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (editingTripId === null) return;
-    updateTrip(editingTripId, {
-      name: editName || undefined,
-      plannedAt: editPlannedAt ? new Date(editPlannedAt).toISOString() : undefined,
-      notes: editNotes || undefined
-    });
-    addToast({ title: "Seyahat güncellendi", variant: "success" });
-    setEditingTripId(null);
+    setSavingEdit(true);
+    try {
+      await updateTrip.mutateAsync({
+        tripId: editingTripId,
+        name: editName || undefined,
+        plannedAt: editPlannedAt ? new Date(editPlannedAt).toISOString() : undefined,
+        notes: editNotes || undefined
+      });
+      addToast({ title: "Seyahat güncellendi", variant: "success" });
+      setEditingTripId(null);
+    } catch (error) {
+      addToast({ title: "Seyahat güncellenemedi", description: (error as Error).message, variant: "error" });
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const columns: TableColumn<(typeof filteredTrips)[number]>[] = [
@@ -240,9 +240,18 @@ const TripListView = () => {
                   size="sm"
                   variant="ghost"
                   icon={<CircleOff className="h-4 w-4" />}
-                  onClick={() => {
-                    updateTripStatus(row.trip.id, "CANCELLED");
-                    addToast({ title: "Seyahat iptal edildi", variant: "info" });
+                  disabled={updateTripStatus.isPending}
+                  onClick={async () => {
+                    try {
+                      await updateTripStatus.mutateAsync({ tripId: row.trip.id, status: "CANCELLED" });
+                      addToast({ title: "Seyahat iptal edildi", variant: "info" });
+                    } catch (error) {
+                      addToast({
+                        title: "Seyahat iptal edilemedi",
+                        description: (error as Error).message,
+                        variant: "error"
+                      });
+                    }
                   }}
                 >
                   İptal
@@ -351,7 +360,9 @@ const TripListView = () => {
             <Button variant="ghost" onClick={() => setEditingTripId(null)}>
               Vazgeç
             </Button>
-            <Button onClick={handleSaveEdit}>Kaydet</Button>
+            <Button onClick={handleSaveEdit} disabled={savingEdit || updateTrip.isPending}>
+              Kaydet
+            </Button>
           </div>
         }
       >

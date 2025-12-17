@@ -5,6 +5,11 @@ import Stepper from "../../components/ui/Stepper";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Chip from "../../components/ui/Chip";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useEmployeesQuery } from "../../queries/useEmployeesQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useCreateTripMutation } from "../../queries/useTripMutations";
+import { useTripsQuery } from "../../queries/useTripsQuery";
 import { useAppStore } from "../../state/useAppStore";
 import { formatDate } from "../../utils/date";
 import { hasSkillCoverage } from "../../utils/validation";
@@ -48,14 +53,11 @@ const lodgingOptions: { value: LodgingProvider; label: string }[] = [
 const TripPlannerModal = () => {
   const tripPlanner = useAppStore((state) => state.tripPlanner);
   const closeTripPlanner = useAppStore((state) => state.closeTripPlanner);
-  const createTrip = useAppStore((state) => state.createTrip);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const loadProducts = useAppStore((state) => state.loadProducts);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const products = useAppStore((state) => state.products);
-  const employees = useAppStore((state) => state.employees);
-  const loadEmployees = useAppStore((state) => state.loadEmployees);
+  useTripsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: employees = [] } = useEmployeesQuery();
+  const createTripMutation = useCreateTripMutation();
   const addToast = useAppStore((state) => state.addToast);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
 
@@ -73,13 +75,8 @@ const TripPlannerModal = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (tripPlanner.open) {
-      loadProducts();
-      loadCompanyProductRecords();
-      loadTrips();
-      loadEmployees();
-    }
-  }, [tripPlanner.open, loadProducts, loadCompanyProductRecords, loadTrips, loadEmployees]);
+    // Data fetched via React Query hooks; nothing to load manually here.
+  }, []);
 
   useEffect(() => {
     if (tripPlanner.open) {
@@ -95,10 +92,8 @@ const TripPlannerModal = () => {
       setPlannedBy("");
       setNotes("");
 
-      // Fetch latest employees when planner opens to ensure availability/status is up to date
-      loadEmployees();
     }
-  }, [tripPlanner.open, tripPlanner.selectedCompanyProductIds, loadEmployees]);
+  }, [tripPlanner.open, tripPlanner.selectedCompanyProductIds]);
 
   const selectedProducts = useMemo(() => {
     const selectedSet = new Set(selectedCompanyProductIds);
@@ -294,22 +289,28 @@ const TripPlannerModal = () => {
       };
     });
 
-    createTrip({
-      name: name || undefined,
-      plannedAt: isoDate,
-      notes: notes || undefined,
-      plannedBy: plannedBy || undefined,
-      companyProductIds: selectedCompanyProductIds,
-      assigneeIds: selectedAssigneeIds,
-      status: "ACTIVE",
-      duties: dutiesPayload,
-      transportMode: transportMode || undefined,
-      vehiclePlate: isCompanyVehicle ? vehiclePlate.trim() || undefined : undefined,
-      lodgingProvider: lodgingProvider || undefined
-    });
-
-    addToast({ title: "Seyahat planlandı", variant: "success" });
-    setSaving(false);
+    try {
+      await createTripMutation.mutateAsync({
+        name: name || undefined,
+        plannedAt: isoDate,
+        notes: notes || undefined,
+        plannedBy: plannedBy || undefined,
+        companyProductIds: selectedCompanyProductIds,
+        assigneeIds: selectedAssigneeIds,
+        status: "ACTIVE",
+        duties: dutiesPayload,
+        transportMode: transportMode || undefined,
+        vehiclePlate: isCompanyVehicle ? vehiclePlate.trim() || undefined : undefined,
+        lodgingProvider: lodgingProvider || undefined
+      });
+      addToast({ title: "Seyahat planlandı", variant: "success" });
+      closeTripPlanner();
+    } catch (error) {
+      console.error("Trip create failed", error);
+      addToast({ title: "Seyahat oluşturulamadı", variant: "error" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!tripPlanner.open) {

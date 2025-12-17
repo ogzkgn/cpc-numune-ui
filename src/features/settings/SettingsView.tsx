@@ -1,39 +1,36 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Edit3, Trash2} from "lucide-react";
+import { Edit3, Trash2 } from "lucide-react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Chip from "../../components/ui/Chip";
 import Table from "../../components/ui/Table";
+import { useCreateEmployeeMutation, useDeleteEmployeeMutation, useUpdateEmployeeMutation } from "../../queries/useEmployeeMutations";
+import { useCreateProductMutation, useDeleteProductMutation } from "../../queries/useProductMutations";
+import { useEmployeesQuery } from "../../queries/useEmployeesQuery";
+import { useLabsQuery } from "../../queries/useLabsQuery";
+import { useCreateLabMutation, useUpdateLabMutation, useDeleteLabMutation } from "../../queries/useLabMutations";
+import { useProductsQuery } from "../../queries/useProductsQuery";
 import { useAppStore } from "../../state/useAppStore";
 import { employeeStatusLabels, employeeStatusTokens, getProductTypeLabel, productTypeLabels } from "../../utils/labels";
 import type { TableColumn } from "../../components/ui/Table";
 import type { Employee, Lab, Product, ProductType } from "../../types";
 
 const SettingsView = () => {
-  const employees = useAppStore((state) => state.employees);
-  const products = useAppStore((state) => state.products);
-  const loadProducts = useAppStore((state) => state.loadProducts);
-  const loadEmployees = useAppStore((state) => state.loadEmployees);
-  const labs = useAppStore((state) => state.labs);
-  const loadLabs = useAppStore((state) => state.loadLabs);
-  const addLab = useAppStore((state) => state.addLab);
-  const updateLab = useAppStore((state) => state.updateLab);
-  const deleteLab = useAppStore((state) => state.deleteLab);
-  const addProduct = useAppStore((state) => state.addProduct);
-  const deleteProduct = useAppStore((state) => state.deleteProduct);
-  const addEmployee = useAppStore((state) => state.addEmployee);
-  const updateEmployee = useAppStore((state) => state.updateEmployee);
-  const deleteEmployee = useAppStore((state) => state.deleteEmployee);
+  const { data: employees = [] } = useEmployeesQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: labs = [] } = useLabsQuery();
   const addToast = useAppStore((state) => state.addToast);
-
-  useEffect(() => {
-    loadProducts();
-    loadEmployees();
-    loadLabs();
-  }, [loadProducts, loadEmployees, loadLabs]);
+  const createProductMutation = useCreateProductMutation();
+  const deleteProductMutation = useDeleteProductMutation();
+  const createEmployeeMutation = useCreateEmployeeMutation();
+  const updateEmployeeMutation = useUpdateEmployeeMutation();
+  const deleteEmployeeMutation = useDeleteEmployeeMutation();
+  const createLabMutation = useCreateLabMutation();
+  const updateLabMutation = useUpdateLabMutation();
+  const deleteLabMutation = useDeleteLabMutation();
 
   const employeeColumns: TableColumn<Employee>[] = [
     { id: "name", header: "Ad", cell: (row) => row.name },
@@ -222,11 +219,12 @@ const SettingsView = () => {
 
     try {
       const result = labForm.id
-        ? await updateLab(labForm.id, payload)
-        : await addLab(payload);
+        ? await updateLabMutation.mutateAsync({ id: labForm.id, changes: payload })
+        : await createLabMutation.mutateAsync(payload);
       addToast({ title: labForm.id ? "Laboratuvar güncellendi" : "Laboratuvar eklendi", variant: "success" });
-      if (result?.oneTimePassword) {
-        setLabCredentials({ email: result.lab.email, password: result.oneTimePassword });
+      const maybeResult = result as unknown as { lab?: { email: string }; oneTimePassword?: string };
+      if (maybeResult?.oneTimePassword && maybeResult.lab?.email) {
+        setLabCredentials({ email: maybeResult.lab.email, password: maybeResult.oneTimePassword });
       }
       setLabForm({ id: null, name: "", city: "", email: "" });
     } catch (error) {
@@ -243,13 +241,19 @@ const SettingsView = () => {
     setLabForm({ id: lab.id, name: lab.name, city: lab.city ?? "", email: lab.email ?? "" });
   };
 
-  const handleDeleteLab = (lab: Lab) => {
-    deleteLab(lab.id);
-    addToast({ title: "Laboratuvar silindi", variant: "info" });
-    setLabCredentials(null);
+  const handleDeleteLab = async (lab: Lab) => {
+    if (!window.confirm(`"${lab.name}" kaydını silmek istediğinize emin misiniz?`)) return;
+    try {
+      await deleteLabMutation.mutateAsync(lab.id);
+      addToast({ title: "Laboratuvar silindi", variant: "info" });
+      setLabCredentials(null);
+    } catch (error) {
+      console.error("Lab delete failed", error);
+      addToast({ title: "Laboratuvar silinemedi", variant: "error" });
+    }
   };
 
-  const handleProductSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleProductSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!productForm.name.trim()) {
       addToast({ title: "Ürün adı zorunlu", variant: "error" });
@@ -281,16 +285,21 @@ const SettingsView = () => {
       return;
     }
 
-    addProduct({
-      name: productForm.name.trim(),
-      productType: resolvedType as ProductType,
-      standardNo: productForm.standardNo.trim() || undefined,
-      requiresSampling,
-      samplingIntervalMonths: samplingInterval,
-      labReturnDays
-    });
+    try {
+      await createProductMutation.mutateAsync({
+        name: productForm.name.trim(),
+        productType: resolvedType as ProductType,
+        standardNo: productForm.standardNo.trim() || undefined,
+        requiresSampling,
+        samplingIntervalMonths: samplingInterval,
+        labReturnDays
+      });
+      addToast({ title: "Ürün eklendi", variant: "success" });
+    } catch (error) {
+      console.error("Product create failed", error);
+      addToast({ title: "Ürün eklenemedi", variant: "error" });
+    }
 
-    addToast({ title: "Ürün eklendi", variant: "success" });
     setProductForm({
       name: "",
       productTypeSelection: productTypeOptions[0] ?? DEFAULT_PRODUCT_TYPE ?? "",
@@ -309,22 +318,30 @@ const SettingsView = () => {
       return;
     }
 
-    if (employeeForm.id) {
-      await updateEmployee(employeeForm.id, {
-        name: employeeForm.name.trim(),
-        city: employeeForm.city.trim() || undefined,
-        status: employeeForm.status,
-        skills: employeeForm.skills
-      });
-      addToast({ title: "Denetçi listesi güncellendi", variant: "success" });
-    } else {
-      await addEmployee({
-        name: employeeForm.name.trim(),
-        city: employeeForm.city.trim() || undefined,
-        status: employeeForm.status,
-        skills: employeeForm.skills
-      });
-      addToast({ title: "Denetçi eklendi", variant: "success" });
+    try {
+      if (employeeForm.id) {
+        await updateEmployeeMutation.mutateAsync({
+          id: employeeForm.id,
+          changes: {
+            name: employeeForm.name.trim(),
+            city: employeeForm.city.trim() || undefined,
+            status: employeeForm.status,
+            skills: employeeForm.skills
+          }
+        });
+        addToast({ title: "Denetçi listesi güncellendi", variant: "success" });
+      } else {
+        await createEmployeeMutation.mutateAsync({
+          name: employeeForm.name.trim(),
+          city: employeeForm.city.trim() || undefined,
+          status: employeeForm.status,
+          skills: employeeForm.skills
+        });
+        addToast({ title: "Denetçi eklendi", variant: "success" });
+      }
+    } catch (error) {
+      console.error("Employee mutation failed", error);
+      addToast({ title: "Denetçi kaydedilemedi", variant: "error" });
     }
 
     setEmployeeForm({
@@ -346,10 +363,15 @@ const SettingsView = () => {
     });
   };
 
-  const handleDeleteEmployee = (employee: Employee) => {
+  const handleDeleteEmployee = async (employee: Employee) => {
     if (!window.confirm(`"${employee.name}" kaydını silmek istediğinize emin misiniz?`)) return;
-    deleteEmployee(employee.id);
-    addToast({ title: "Denetçi silindi", variant: "success" });
+    try {
+      await deleteEmployeeMutation.mutateAsync(employee.id);
+      addToast({ title: "Denetçi silindi", variant: "success" });
+    } catch (error) {
+      console.error("Employee delete failed", error);
+      addToast({ title: "Denetçi silinemedi", variant: "error" });
+    }
     if (employeeForm.id === employee.id) {
       setEmployeeForm({
         id: null,
@@ -363,8 +385,13 @@ const SettingsView = () => {
 
   const handleDeleteProduct = (product: Product) => {
     if (!window.confirm(`"${product.name}" ürününü silmek istediğinize emin misiniz?`)) return;
-    deleteProduct(product.id);
-    addToast({ title: "Ürün silindi", variant: "success" });
+    deleteProductMutation
+      .mutateAsync(product.id)
+      .then(() => addToast({ title: "Ürün silindi", variant: "success" }))
+      .catch((error) => {
+        console.error("Product delete failed", error);
+        addToast({ title: "Ürün silinemedi", variant: "error" });
+      });
   };
 
   return (

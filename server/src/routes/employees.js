@@ -1,8 +1,22 @@
 const router = require("express").Router();
 const { pool } = require("../db/client");
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
+    if (req.user?.role === "lab" && req.user.labId) {
+      // For lab users, return only employees assigned to their trips
+      const result = await pool.query(
+        `SELECT DISTINCT e.id, e.name, e.city, e.status, e.skills
+         FROM employees e
+         JOIN trips t ON t.assignee_ids @> ARRAY[e.id]::bigint[]
+         JOIN trip_items ti ON ti.trip_id = t.id
+         WHERE ti.lab_assigned_lab_id = $1
+         ORDER BY e.name ASC`,
+        [req.user.labId]
+      );
+      return res.json(result.rows);
+    }
+
     const result = await pool.query(
       `SELECT id, name, city, status, skills
        FROM employees

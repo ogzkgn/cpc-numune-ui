@@ -3,7 +3,13 @@
 import Modal from "../../components/ui/Modal";
 import Button from "../../components/ui/Button";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useEmployeesQuery } from "../../queries/useEmployeesQuery";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useTripCompletionQuery } from "../../queries/useTripCompletionQuery";
+import { useCompleteTripMutation } from "../../queries/useTripMutations";
+import type { CompleteTripEntryInput } from "../../queries/useTripMutations";
 import { generateLabEntryCode } from "../../utils/samples";
 import { getProductTypeLabel } from "../../utils/labels";
 import type {
@@ -64,11 +70,12 @@ const lodgingOptions: { value: LodgingProvider; label: string }[] = [
 
 const dutyTypeLabels: Record<TripDutyType, string> = {
   NUMUNE: "Numune",
-  GÖZETİM:"Gözetim",
+  GÖZETİM: "Gözetim",
   BOTH: "Gözetim + Numune"
 };
 
 const toCurrencyInput = (value: number | undefined) => (typeof value === "number" ? String(value) : "");
+const toDateInputValue = (value: string) => (value ? value.split("T")[0] : "");
 
 interface TripCompletionModalProps {
   tripId: number | null;
@@ -77,16 +84,16 @@ interface TripCompletionModalProps {
 }
 
 const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps) => {
-  const trips = useAppStore((state) => state.trips);
-  const employees = useAppStore((state) => state.employees);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const tripItems = useAppStore((state) => state.tripItems);
-  const tripCompletions = useAppStore((state) => state.tripCompletions);
-  const completeTrip = useAppStore((state) => state.completeTrip);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const loadEmployees = useAppStore((state) => state.loadEmployees);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const {productMap } = useEntityMaps();
+  const { data: tripsData } = useTripsQuery();
+  const { data: employees = [] } = useEmployeesQuery();
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: tripCompletion } = useTripCompletionQuery(tripId ?? 0, Boolean(tripId));
+  const completeTrip = useCompleteTripMutation();
+  const addToast = useAppStore((state) => state.addToast);
+  const trips = tripsData?.trips ?? [];
+  const tripItems = tripsData?.tripItems ?? [];
+  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const employeeMap = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
 
   const [formState, setFormState] = useState<TripCompletionFormState>(createEmptyFormState());
@@ -109,10 +116,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     }));
   }, [tripItems, trip, trip?.dutyAssignments]);
   const tripItemById = useMemo(() => new Map(relatedTripItems.map((item) => [item.id, item])), [relatedTripItems]);
-  const existingCompletion = useMemo(
-    () => (trip ? tripCompletions.find((entry) => entry.tripId === trip.id) : undefined),
-    [tripCompletions, trip]
-  );
+  const existingCompletion = tripCompletion ?? undefined;
 
   useEffect(() => {
     if (!open || !trip) {
@@ -230,8 +234,6 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     setError(null);
   };
 
-  const toDateInputValue = (value: string) => (value ? value.split("T")[0] : "");
-
   const parseAmount = (value: string) => {
     if (!value) return undefined;
     const parsed = Number(value.replace(",", "."));
@@ -256,14 +258,6 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     });
   };
 
-  useEffect(() => {
-    if (open) {
-      loadTrips();
-      loadEmployees();
-      loadCompanyProductRecords();
-    }
-  }, [open, loadTrips, loadEmployees, loadCompanyProductRecords]);
-
   const handleSubmit = async () => {
     if (!trip) return;
     if (!isFormValid()) {
@@ -272,7 +266,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     }
     setSaving(true);
 
-    const payloadEntries: TripCompletionEntry[] = formState.entries.map((entry) => {
+    const payloadEntries: CompleteTripEntryInput[] = formState.entries.map((entry) => {
       const tripItem = tripItemById.get(entry.tripItemId);
       const dutyAssignment = tripItem ? trip?.dutyAssignments?.[tripItem.companyProductId] : undefined;
       const dutyType: TripDutyType =
@@ -284,6 +278,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         trip?.assigneeIds ??
         [];
 
+      const companyProductId: number = (tripItem?.companyProductId ?? entry.tripItemId) as number;
       const companyProductRecord = tripItem
         ? companyProductRecords.find((product) => product.id === tripItem.companyProductId)
         : undefined;
@@ -305,6 +300,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
 
       return {
         tripItemId: entry.tripItemId,
+        companyProductId,
         dutyType,
         dutyAssigneeIds,
         performedAt: entry.sampleNotCompleted ? undefined : entry.performedAt || undefined,
@@ -323,18 +319,25 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     const totalKmValue = formState.totalKm ? Number(formState.totalKm) : undefined;
     const totalDaysValue = formState.totalDays ? Number(formState.totalDays) : undefined;
 
-    await completeTrip({
-      tripId: trip.id,
-      completedByEmployeeIds: formState.completedBy,
-      transportMode: effectiveTransportMode as TransportMode,
-      vehiclePlate: isCompanyVehicle ? effectiveVehiclePlate?.trim() || undefined : undefined,
-      totalKm: requiresDistanceInfo ? totalKmValue : undefined,
-      totalDays: requiresDistanceInfo ? totalDaysValue : undefined,
-      lodgingProvider: effectiveLodgingProvider || undefined,
-      entries: payloadEntries
-    });
-    setSaving(false);
-    onClose();
+    try {
+      await completeTrip.mutateAsync({
+        tripId: trip.id,
+        completedByEmployeeIds: formState.completedBy,
+        transportMode: effectiveTransportMode as TransportMode,
+        vehiclePlate: isCompanyVehicle ? effectiveVehiclePlate?.trim() || undefined : undefined,
+        totalKm: requiresDistanceInfo ? totalKmValue : undefined,
+        totalDays: requiresDistanceInfo ? totalDaysValue : undefined,
+        lodgingProvider: effectiveLodgingProvider || undefined,
+        entries: payloadEntries
+      });
+      setSaving(false);
+      addToast({ title: "Seyahat tamamlandı", variant: "success" });
+      onClose();
+    } catch (err) {
+      console.error("Trip completion failed", err);
+      setError("Form kaydedilemedi. Lütfen tekrar deneyin.");
+      setSaving(false);
+    }
   };
 
   const entryViews = useMemo(() => {
@@ -344,7 +347,6 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
         ? companyProductRecords.find((item) => item.id === tripItem.companyProductId)
         : undefined;
       const product = record?.productId ? productMap.get(record.productId) : undefined;
-      const site = undefined;
       const dutyAssignment = tripItem ? trip?.dutyAssignments?.[tripItem.companyProductId] : undefined;
       const completionEntry = existingCompletion?.entries.find((item) => item.tripItemId === entry.tripItemId);
       const dutyType: TripDutyType =
@@ -381,10 +383,6 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
       return {
         entry,
         tripItem,
-        company: undefined,
-        product,
-        site,
-        companyProduct: undefined,
         companyProductRecord: record,
         dutyType,
         dutyAssigneeIds,
@@ -402,64 +400,55 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
     trip,
     tripItems,
     existingCompletion,
-    employeeMap
+    employeeMap,
+    employees
   ]);
 
+  if (!trip) return null;
+
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Seyahat Tamamlama Formu"
-      size="xl"
-      className="max-w-7xl"
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Vazgeç
-          </Button>
-          <Button onClick={handleSubmit} disabled={!trip || saving}>
-            Kaydet ve Tamamla
+    <Modal open={open} onClose={onClose} title="Seyahat Tamamlama" size="xl">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">{trip.name ?? `Seyahat #${trip.id}`}</h3>
+            <p className="text-xs text-slate-500">Görevleri tamamlayın ve masrafları kaydedin.</p>
+          </div>
+          <Button onClick={handleSubmit} disabled={saving || !isFormValid()}>
+            Kaydet
           </Button>
         </div>
-      }
-    >
-      {!trip ? (
-        <p className="text-sm text-slate-500">Formu doldurmak için bir seyahat seçin.</p>
-      ) : (
-        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
-          <section className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
               <h3 className="text-sm font-semibold text-slate-700">Planı Gerçekleştiren Personel</h3>
               <div className="mt-3 flex flex-wrap gap-2">
                 {assignedEmployees.map((employee) => (
-                  <label key={employee.id} className="flex items-center gap-2 text-sm text-slate-600">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={formState.completedBy.includes(employee.id)}
-                      onChange={() => handleToggleEmployee(employee.id)}
-                    />
+                  <Button
+                    key={employee.id}
+                    size="sm"
+                    variant={formState.completedBy.includes(employee.id) ? "secondary" : "ghost"}
+                    onClick={() => handleToggleEmployee(employee.id)}
+                  >
                     {employee.name}
-                  </label>
+                  </Button>
                 ))}
-                {assignedEmployees.length === 0 ? (
-                  <p className="text-xs text-slate-500">Bu seyahate atanan personel bulunmuyor.</p>
-                ) : null}
               </div>
+              {formState.completedBy.length === 0 ? (
+                <p className="text-xs text-red-500 mt-2">En az bir personel seçilmeli.</p>
+              ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-sm font-semibold text-slate-700">Ulaşım Türü</h3>
+                <h3 className="text-sm font-semibold text-slate-700">Ulaşım</h3>
                 {hasPlannedTransport ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                  <div className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
                     <p className="font-medium text-slate-700">{displayTransportLabel ?? "Belirtilmedi"}</p>
-                    {effectiveTransportMode === "COMPANY_VEHICLE" ? (
-                      <p className="text-xs text-slate-500">Plaka: {effectiveVehiclePlate || "-"}</p>
-                    ) : null}
-                  
+                    {trip?.vehiclePlate ? <p className="text-xs text-slate-500">Plaka: {trip.vehiclePlate}</p> : null}
                   </div>
                 ) : (
-                  <div className="mt-3 grid gap-2">
+                  <div className="mt-2 grid gap-2">
                     {transportOptions.map((option) => (
                       <label key={option.value} className="flex items-center gap-2 text-sm text-slate-600">
                         <input
@@ -495,7 +484,6 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                 {hasPlannedLodging ? (
                   <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
                     <p className="font-medium text-slate-700">{displayLodgingLabel ?? "Belirtilmedi"}</p>
-                 
                   </div>
                 ) : (
                   <div className="mt-3 grid gap-2">
@@ -522,9 +510,7 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2 text-sm text-slate-600">
                 <h3 className="text-sm font-semibold text-slate-700">Planlamayı Yapan:</h3>
-                <p>
-                 {trip?.plannedBy || "Belirtilmedi"}
-                </p>
+                <p>{trip?.plannedBy || "Belirtilmedi"}</p>
               </div>
               {isCompanyVehicle ? (
                 <div className="grid gap-3 md:grid-cols-2">
@@ -591,251 +577,215 @@ const TripCompletionModal = ({ tripId, open, onClose }: TripCompletionModalProps
                 </div>
               ) : null}
             </div>
-          </section>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">Firma / Ürün Bilgileri</h3>
-            <div className="overflow-x-auto rounded-2xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-xs md:text-sm">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-slate-600">
-                    <th className="px-3 py-2">Firma / Tesis</th>
-                    <th className="px-3 py-2">BT kod / Ürün Kodu</th>
-                    <th className="px-3 py-2">İlçe / İl</th>
-                    <th className="px-3 py-2">Ürün Tipi</th>
-                    <th className="px-3 py-2">Görev Bilgisi</th>
-                    <th className="px-3 py-2">Numune Tarihi</th>
-                    <th className="px-3 py-2">Takip No</th>
-                    <th className="px-3 py-2">Gözetim Tarihi</th>
-                    <th className="px-3 py-2">Konaklama Ödeme</th>
-                    <th className="px-3 py-2">Ulaşım Masrafı</th>
-                    <th className="px-3 py-2">Öğle Yemeği</th>
-                    <th className="px-3 py-2">Akşam Yemeği</th>
-                    <th className="px-3 py-2">Diğer Giderler</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {entryViews.map(({ entry, companyProductRecord, dutyType, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
-                    <tr key={entry.tripItemId} className="align-top">
-                      <td className="px-3 py-2 text-slate-700">
-                        {companyProductRecord?.companyName ?? "-"}
-                        {companyProductRecord?.location ? ` / ${companyProductRecord.location}` : ""}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {companyProductRecord?.btCode
-                          ? `${companyProductRecord.btCode}${companyProductRecord.productCode ? ` / ${companyProductRecord.productCode}` : ""}`
-                          : companyProductRecord?.productCode ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {companyProductRecord?.location ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {companyProductRecord?.productType
-                          ? getProductTypeLabel(companyProductRecord.productType)
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-sm font-semibold text-slate-800">{dutyTypeLabels[dutyType]}</span>
-                          {dutyAssignees.length > 0 ? (
-                            <span className="text-[11px] text-slate-500">
-                              {dutyAssignees.map((assignee) => assignee.name).join(", ")}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-red-600">Planlamada denetçi atanmadı</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {requiresSample ? (
-                          <div className="space-y-2">
-                            <input
-                              type="date"
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                              value={toDateInputValue(entry.performedAt)}
-                              disabled={entry.sampleNotCompleted}
-                              onChange={(event) =>
-                                handleEntryChange(entry.tripItemId, "performedAt", event.target.value)
-                              }
-                            />
-                            <label className="flex items-center gap-2 text-xs text-slate-600">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4"
-                                checked={entry.sampleNotCompleted}
-                                onChange={(event) =>
-                                  handleEntryFlagChange(entry.tripItemId, "sampleNotCompleted", event.target.checked)
-                                }
-                              />
-                              Numune tamamlanmadı
-                            </label>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">Numune görevi için tarih gerekmiyor</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {requiresSample ? (
-                          entry.sampleNotCompleted ? (
-                            <span className="text-xs text-red-600">Tamamlanmadı</span>
-                          ) : trackingCode ? (
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                              {trackingCode}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-400">Tarih girildiğinde oluşacak</span>
-                          )
-                        ) : (
-                          <span className="text-xs text-slate-400">Gözetim görevi</span>
-                        )}
-                      </td><td className="px-3 py-2">
-                        {requiresInspection ? (
-                          <div className="space-y-2">
-                            <input
-                              type="date"
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                              value={toDateInputValue(entry.inspectionDate)}
-                              disabled={entry.inspectionNotCompleted}
-                              onChange={(event) =>
-                                handleEntryChange(entry.tripItemId, "inspectionDate", event.target.value)
-                              }
-                            />
-                            <label className="flex items-center gap-2 text-xs text-slate-600">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4"
-                                checked={entry.inspectionNotCompleted}
-                                onChange={(event) =>
-                                  handleEntryFlagChange(
-                                    entry.tripItemId,
-                                    "inspectionNotCompleted",
-                                    event.target.checked
-                                  )
-                                }
-                              />
-                              Gözetim tamamlanmadı
-                            </label>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">Gözetim görevi için tarih gerekmiyor</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                          value={entry.lodgingPaymentAmount}
-                          onChange={(event) =>
-                            handleEntryChange(entry.tripItemId, "lodgingPaymentAmount", event.target.value)
-                          }
-                          placeholder="₺"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                          value={entry.transportExpense}
-                          onChange={(event) =>
-                            handleEntryChange(entry.tripItemId, "transportExpense", event.target.value)
-                          }
-                          placeholder="₺"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                          value={entry.mealLunchExpense}
-                          onChange={(event) =>
-                            handleEntryChange(entry.tripItemId, "mealLunchExpense", event.target.value)
-                          }
-                          placeholder="₺"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                          value={entry.mealDinnerExpense}
-                          onChange={(event) =>
-                            handleEntryChange(entry.tripItemId, "mealDinnerExpense", event.target.value)
-                          }
-                          placeholder="₺"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
-                          value={entry.companyExpense}
-                          onChange={(event) =>
-                            handleEntryChange(entry.tripItemId, "companyExpense", event.target.value)
-                          }
-                          placeholder="₺"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                  {entryViews.length === 0 ? (
-                    <tr>
-                      <td colSpan={13} className="px-3 py-4 text-center text-sm text-slate-500">
-                        Bu seyahat için ilişkilendirilmiş firma-ürün kaydı bulunmuyor.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-xs text-slate-500">* işaretli alanların doldurulması zorunludur.</p>
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
           </div>
-        </div>
-      )}
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-700">Firma / Ürün Bilgileri</h3>
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-xs md:text-sm">
+              <thead className="bg-slate-50">
+                <tr className="text-left text-slate-600">
+                  <th className="px-3 py-2">Firma / Tesis</th>
+                  <th className="px-3 py-2">BT kod / Ürün Kodu</th>
+                  <th className="px-3 py-2">İlçe / İl</th>
+                  <th className="px-3 py-2">Ürün Tipi</th>
+                  <th className="px-3 py-2">Görev Bilgisi</th>
+                  <th className="px-3 py-2">Numune Tarihi</th>
+                  <th className="px-3 py-2">Takip No</th>
+                  <th className="px-3 py-2">Gözetim Tarihi</th>
+                  <th className="px-3 py-2">Konaklama Ödeme</th>
+                  <th className="px-3 py-2">Ulaşım Masrafı</th>
+                  <th className="px-3 py-2">Öğle Yemeği</th>
+                  <th className="px-3 py-2">Akşam Yemeği</th>
+                  <th className="px-3 py-2">Diğer Giderler</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {entryViews.map(({ entry, companyProductRecord, dutyType, dutyAssigneeIds, dutyAssignees, requiresSample, requiresInspection, trackingCode }) => (
+                  <tr key={entry.tripItemId} className="align-top">
+                    <td className="px-3 py-2 text-slate-700">
+                      {companyProductRecord?.companyName ?? "-"}
+                      {companyProductRecord?.location ? ` / ${companyProductRecord.location}` : ""}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {companyProductRecord?.btCode
+                        ? `${companyProductRecord.btCode}${companyProductRecord.productCode ? ` / ${companyProductRecord.productCode}` : ""}`
+                        : companyProductRecord?.productCode ?? "-"}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {companyProductRecord?.location ?? "-"}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {companyProductRecord?.productType
+                        ? getProductTypeLabel(companyProductRecord.productType)
+                        : "-"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold text-slate-800">{dutyTypeLabels[dutyType]}</span>
+                        {dutyAssignees.length > 0 ? (
+                          <span className="text-[11px] text-slate-500">
+                            {dutyAssignees.map((assignee) => assignee.name).join(", ")}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-red-600">Planlamada denetçi atanmadı</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {requiresSample ? (
+                        <div className="space-y-2">
+                          <input
+                            type="date"
+                            className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                            value={toDateInputValue(entry.performedAt)}
+                            disabled={entry.sampleNotCompleted}
+                            onChange={(event) =>
+                              handleEntryChange(entry.tripItemId, "performedAt", event.target.value)
+                            }
+                          />
+                          <label className="flex items-center gap-2 text-xs text-slate-600">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={entry.sampleNotCompleted}
+                              onChange={(event) =>
+                                handleEntryFlagChange(entry.tripItemId, "sampleNotCompleted", event.target.checked)
+                              }
+                            />
+                            Numune tamamlanmadı
+                          </label>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">Numune görevi için tarih gerekmiyor</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {requiresSample ? (
+                        entry.sampleNotCompleted ? (
+                          <span className="text-xs text-red-600">Tamamlanmadı</span>
+                        ) : trackingCode ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                            {trackingCode}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">Tarih girildiğinde oluşacak</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-slate-400">Gözetim görevi</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {requiresInspection ? (
+                        <div className="space-y-2">
+                          <input
+                            type="date"
+                            className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                            value={toDateInputValue(entry.inspectionDate)}
+                            disabled={entry.inspectionNotCompleted}
+                            onChange={(event) =>
+                              handleEntryChange(entry.tripItemId, "inspectionDate", event.target.value)
+                            }
+                          />
+                          <label className="flex items-center gap-2 text-xs text-slate-600">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={entry.inspectionNotCompleted}
+                              onChange={(event) =>
+                                handleEntryFlagChange(
+                                  entry.tripItemId,
+                                  "inspectionNotCompleted",
+                                  event.target.checked
+                                )
+                              }
+                            />
+                            Gözetim tamamlanmadı
+                          </label>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">Gözetim görevi için tarih gerekmiyor</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                        value={entry.lodgingPaymentAmount}
+                        onChange={(event) =>
+                          handleEntryChange(entry.tripItemId, "lodgingPaymentAmount", event.target.value)
+                        }
+                        placeholder="₺"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                        value={entry.transportExpense}
+                        onChange={(event) =>
+                          handleEntryChange(entry.tripItemId, "transportExpense", event.target.value)
+                        }
+                        placeholder="₺"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                        value={entry.mealLunchExpense}
+                        onChange={(event) =>
+                          handleEntryChange(entry.tripItemId, "mealLunchExpense", event.target.value)
+                        }
+                        placeholder="₺"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                        value={entry.mealDinnerExpense}
+                        onChange={(event) =>
+                          handleEntryChange(entry.tripItemId, "mealDinnerExpense", event.target.value)
+                        }
+                        placeholder="₺"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full rounded-lg border border-slate-300 px-2 py-1 text-xs md:text-sm"
+                        value={entry.companyExpense}
+                        onChange={(event) =>
+                          handleEntryChange(entry.tripItemId, "companyExpense", event.target.value)
+                        }
+                        placeholder="₺"
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {entryViews.length === 0 ? (
+                  <tr>
+                    <td colSpan={13} className="px-3 py-4 text-center text-sm text-slate-500">
+                      Bu seyahat için ilişkilendirilmiş firma-ürün kaydı bulunmuyor.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500">* işaretli alanların doldurulması zorunludur.</p>
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        </section>
+      </div>
     </Modal>
   );
 };
 
 export default TripCompletionModal;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

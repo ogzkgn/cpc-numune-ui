@@ -1,8 +1,11 @@
-﻿import { useEffect } from "react";
-import Modal from "../../components/ui/Modal";
+﻿import Modal from "../../components/ui/Modal";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
-import { useAppStore } from "../../state/useAppStore";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useEmployeesQuery } from "../../queries/useEmployeesQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useTripCompletionQuery } from "../../queries/useTripCompletionQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
 import { formatDate } from "../../utils/date";
 import { generateLabEntryCode } from "../../utils/samples";
 import { getProductTypeLabel } from "../../utils/labels";
@@ -42,41 +45,13 @@ interface TripCompletionSummaryModalProps {
 }
 
 const TripCompletionSummaryModal = ({ tripId, open, onClose, mode = "detail" }: TripCompletionSummaryModalProps) => {
-  const trips = useAppStore((state) => state.trips);
-  const employees = useAppStore((state) => state.employees);
-  const tripCompletions = useAppStore((state) => state.tripCompletions);
-  const tripItems = useAppStore((state) => state.tripItems);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const products = useAppStore((state) => state.products);
-  const loadTripCompletion = useAppStore((state) => state.loadTripCompletion);
-  const loadTrips = useAppStore((state) => state.loadTrips);
-  const loadEmployees = useAppStore((state) => state.loadEmployees);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const loadProductsStore = useAppStore((state) => state.loadProducts);
-
-  const trip = tripId ? trips.find((item) => item.id === tripId) : undefined;
-  const completion = tripId ? tripCompletions.find((entry) => entry.tripId === tripId) : undefined;
-
-  useEffect(() => {
-    if (open) {
-      loadTrips();
-      loadEmployees();
-      loadCompanyProductRecords();
-      loadProductsStore();
-      if (tripId && !completion) {
-        loadTripCompletion(tripId);
-      }
-    }
-  }, [
-    open,
-    tripId,
-    completion,
-    loadTripCompletion,
-    loadTrips,
-    loadEmployees,
-    loadCompanyProductRecords,
-    loadProductsStore
-  ]);
+  const { data: tripsData } = useTripsQuery();
+  const { data: employees = [] } = useEmployeesQuery();
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: products = [] } = useProductsQuery();
+  const tripItems = tripsData?.tripItems ?? [];
+  const trip = tripId ? (tripsData?.trips ?? []).find((item) => item.id === tripId) : undefined;
+  const { data: completion } = useTripCompletionQuery(tripId ?? 0, open && Boolean(tripId));
 
   const participantNames =
     completion?.completedByEmployeeIds

@@ -13,6 +13,7 @@ const ProtectedRoute = () => {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const loading = useAuthStore((state) => state.loading);
+  const authReady = useAuthStore((state) => state.authReady);
   const bootstrap = useAuthStore((state) => state.bootstrap);
   const setActiveRole = useAppStore((state) => state.setActiveRole);
   const activeRole = useAppStore((state) => state.activeRole);
@@ -27,7 +28,7 @@ const ProtectedRoute = () => {
     }
   }, [user?.role, activeRole, setActiveRole]);
 
-  if (loading && !user) {
+  if ((!authReady && loading) || (!authReady && !user)) {
     return (
       <div className="flex min-h-screen items-center justify-center text-slate-600">
         Oturum doğrulanıyor...

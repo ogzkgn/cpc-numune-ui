@@ -1,14 +1,19 @@
-﻿import Modal from "../../components/ui/Modal";
+import { useEffect, useMemo, useState } from "react";
+import { Filter, RotateCw } from "lucide-react";
+
+import Modal from "../../components/ui/Modal";
 import Drawer from "../../components/ui/Drawer";
 import Chip from "../../components/ui/Chip";
-import { Filter, RotateCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Table from "../../components/ui/Table";
 import { useAppStore } from "../../state/useAppStore";
-import { useEntityMaps } from "../../hooks/useEntityMaps";
+import { useLabItemsQuery, useUpsertLabFormMutation } from "../../queries/useLabItemsQuery";
+import { useCompanyProductRecordsQuery } from "../../queries/useCompanyProductRecordsQuery";
+import { useTripsQuery } from "../../queries/useTripsQuery";
+import { useProductsQuery } from "../../queries/useProductsQuery";
+import { useLabsQuery } from "../../queries/useLabsQuery";
+import { useUpdateTripItemLabStatusMutation } from "../../queries/useTripMutations";
 import { formatDate } from "../../utils/date";
 import { labStatusLabels, labStatusTokens, getProductTypeLabel } from "../../utils/labels";
 import { FALLBACK_DATA, SHIPMENT_FIELDS, getFieldConfig } from "./labConstants";
@@ -17,28 +22,28 @@ import type { TableColumn } from "../../components/ui/Table";
 import type { LabFormDocument } from "../../types";
 
 const LabInboxView = () => {
-  const tripItems = useAppStore((state) => state.tripItems);
-  const trips = useAppStore((state) => state.trips);
-  const labForms = useAppStore((state) => state.labForms);
-  const labs = useAppStore((state) => state.labs);
-  const loadLabs = useAppStore((state) => state.loadLabs);
   const activeRole = useAppStore((state) => state.activeRole);
-  const upsertLabForm = useAppStore((state) => state.upsertLabForm);
-  const updateTripItemLabStatus = useAppStore((state) => state.updateTripItemLabStatus);
   const addToast = useAppStore((state) => state.addToast);
-  const loadLabItems = useAppStore((state) => state.loadLabItems);
-  const loadCompanyProductRecords = useAppStore((state) => state.loadCompanyProductRecords);
-  const companyProductRecords = useAppStore((state) => state.companyProductRecords);
-  const { productMap } = useEntityMaps();
+  const { data: labItemsData } = useLabItemsQuery("inbox", activeRole);
+  const { data: companyProductRecords = [] } = useCompanyProductRecordsQuery();
+  const { data: tripsData } = useTripsQuery(activeRole !== "lab", activeRole);
+  const { data: products = [] } = useProductsQuery(activeRole !== "lab");
+  const { data: labs = [] } = useLabsQuery();
+  const updateTripItemLabStatus = useUpdateTripItemLabStatusMutation();
+  const upsertLabForm = useUpsertLabFormMutation("inbox", activeRole);
+
+  const tripItems = labItemsData?.tripItems ?? [];
+  const labForms = labItemsData?.labForms ?? [];
+  const trips = tripsData?.trips ?? [];
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const labMap = useMemo(() => new Map(labs.map((lab) => [lab.id, lab.name])), [labs]);
+  const recordMap = useMemo(() => new Map(companyProductRecords.map((rec) => [rec.id, rec])), [companyProductRecords]);
 
   const [selectedItem, setSelectedItem] = useState<(typeof tripItems)[number] | null>(null);
   const [isEditingRevision, setIsEditingRevision] = useState(false);
   const [revisionNote, setRevisionNote] = useState("");
   const isLabUser = activeRole === "lab";
   const isAdminUser = activeRole === "admin";
-
-  const recordMap = useMemo(() => new Map(companyProductRecords.map((rec) => [rec.id, rec])), [companyProductRecords]);
 
   const [isFilterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState({
@@ -330,12 +335,6 @@ const LabInboxView = () => {
   );
 
   useEffect(() => {
-    loadLabItems("inbox");
-    loadCompanyProductRecords();
-    loadLabs();
-  }, [loadLabItems, loadCompanyProductRecords, loadLabs]);
-
-  useEffect(() => {
     setIsEditingRevision(false);
     setRevisionNote(selectedForm?.cpcNotes ?? "");
   }, [selectedForm]);
@@ -396,23 +395,36 @@ const LabInboxView = () => {
     const normalizedData = { ...(selectedForm.data ?? {}) } as Record<string, unknown>;
     const normalizedDocs = normalizeDocuments(selectedForm.documents);
 
-    upsertLabForm({
-      tripItemId: selectedItem.id,
-      standardNo: selectedForm.standardNo,
-      data: normalizedData,
-      status: "APPROVED",
-      labNotes: selectedForm.labNotes,
-      cpcNotes: selectedForm.cpcNotes,
-      documents: normalizedDocs
-    });
-    updateTripItemLabStatus(selectedItem.id, "ACCEPTED");
-    addToast({
-      title: "Form onaylandı",
-      description: selectedItem.labEntryCode ?? undefined,
-      variant: "success"
-    });
-    setIsEditingRevision(false);
-    setSelectedItem(null);
+    upsertLabForm.mutate(
+      {
+        tripItemId: selectedItem.id,
+        standardNo: selectedForm.standardNo,
+        data: normalizedData,
+        status: "APPROVED",
+        labNotes: selectedForm.labNotes,
+        cpcNotes: selectedForm.cpcNotes,
+        documents: normalizedDocs
+      },
+      {
+        onSuccess: async () => {
+          await updateTripItemLabStatus.mutateAsync({ tripItemId: selectedItem.id, status: "ACCEPTED" });
+          addToast({
+            title: "Form onaylandı",
+            description: selectedItem.labEntryCode ?? undefined,
+            variant: "success"
+          });
+          setIsEditingRevision(false);
+          setSelectedItem(null);
+        },
+        onError: (error) => {
+          addToast({
+            title: "Form onaylanamadı",
+            description: (error as Error).message,
+            variant: "error"
+          });
+        }
+      }
+    );
   };
 
   const handleRequestRevision = (note: string) => {
@@ -420,23 +432,36 @@ const LabInboxView = () => {
     const normalizedData = { ...(selectedForm.data ?? {}) } as Record<string, unknown>;
     const normalizedDocs = normalizeDocuments(selectedForm.documents);
 
-    upsertLabForm({
-      tripItemId: selectedItem.id,
-      standardNo: selectedForm.standardNo,
-      data: normalizedData,
-      status: "DRAFT",
-      labNotes: selectedForm.labNotes,
-      cpcNotes: note,
-      documents: normalizedDocs
-    });
-    updateTripItemLabStatus(selectedItem.id, "PENDING");
-    addToast({
-      title: "Revize talebi gönderildi",
-      description: selectedItem.labEntryCode ?? undefined,
-      variant: "info"
-    });
-    setIsEditingRevision(false);
-    setSelectedItem(null);
+    upsertLabForm.mutate(
+      {
+        tripItemId: selectedItem.id,
+        standardNo: selectedForm.standardNo,
+        data: normalizedData,
+        status: "DRAFT",
+        labNotes: selectedForm.labNotes,
+        cpcNotes: note,
+        documents: normalizedDocs
+      },
+      {
+        onSuccess: async () => {
+          await updateTripItemLabStatus.mutateAsync({ tripItemId: selectedItem.id, status: "PENDING" });
+          addToast({
+            title: "Revize talebi gönderildi",
+            description: selectedItem.labEntryCode ?? undefined,
+            variant: "info"
+          });
+          setIsEditingRevision(false);
+          setSelectedItem(null);
+        },
+        onError: (error) => {
+          addToast({
+            title: "Revize talebi gönderilemedi",
+            description: (error as Error).message,
+            variant: "error"
+          });
+        }
+      }
+    );
   };
 
   const handleRevisionAction = () => {
@@ -518,48 +543,38 @@ const LabInboxView = () => {
         onClose={() => setFilterOpen(false)}
         title="Filtreler"
         footer={
-          <div className="flex justify-between gap-2">
-            <Button variant="ghost" onClick={() => { handleResetFilters(); setFilterOpen(false); }}>
-              Sıfırla
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setFilterOpen(false)}>
+              Kapat
             </Button>
-            <Button onClick={() => setFilterOpen(false)}>Uygula</Button>
           </div>
         }
       >
-        <div className="space-y-6">
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Ürün Tipi</h3>
-            <input
-              list="inboxProductTypes"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Ürün tipi seçin veya arayın"
-              value={filters.productTypes[0] ? getProductTypeLabel(filters.productTypes[0] as any) : ""}
-              onChange={(event) => {
-                const label = event.target.value;
-                const matched = availableProductTypes.find(
-                  (type) => getProductTypeLabel(type as any) === label
-                );
+        <div className="space-y-4">
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Ürün Tipi
+            <select
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={filters.productTypes[0] ?? ""}
+              onChange={(event) =>
                 setFilters((prev) => ({
                   ...prev,
-                  productTypes: matched ? [matched] : []
-                }));
-              }}
-            />
-            <datalist id="inboxProductTypes">
-              {availableProductTypes.map((type) => (
-                <option key={type} value={getProductTypeLabel(type as any)}>
-                  {getProductTypeLabel(type as any)}
+                  productTypes: event.target.value ? [event.target.value] : []
+                }))
+              }
+            >
+              <option value="">Tamamı</option>
+              {availableProductTypes.map((code) => (
+                <option key={code} value={code}>
+                  {getProductTypeLabel(code as any)}
                 </option>
               ))}
-            </datalist>
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Firma</h3>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Firma
             <input
-              list="inboxCompanyOptions"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Firma adı"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={filters.companyName ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -568,20 +583,11 @@ const LabInboxView = () => {
                 }))
               }
             />
-            <datalist id="inboxCompanyOptions">
-              {availableCompanies.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </datalist>
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">BT Kodu</h3>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            BT Kodu
             <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="BT kodu"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={filters.customerCode ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -590,14 +596,11 @@ const LabInboxView = () => {
                 }))
               }
             />
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Ürün</h3>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Ürün
             <input
-              list="inboxProductOptions"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Ürün adı"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={filters.productName ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -605,20 +608,18 @@ const LabInboxView = () => {
                   productName: event.target.value || undefined
                 }))
               }
+              list="product-options"
             />
-            <datalist id="inboxProductOptions">
+            <datalist id="product-options">
               {availableProducts.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
+                <option key={name} value={name} />
               ))}
             </datalist>
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Laboratuvar</h3>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Laboratuvar
             <select
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={filters.labId ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -627,20 +628,18 @@ const LabInboxView = () => {
                 }))
               }
             >
-              <option value="">Tümü</option>
+              <option value="">Tamamı</option>
               {labs.map((lab) => (
                 <option key={lab.id} value={lab.id}>
                   {lab.name}
                 </option>
               ))}
             </select>
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Ürün Kodu</h3>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Ürün Kodu
             <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Ürün Kodu"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={filters.labEntryCode ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -649,13 +648,12 @@ const LabInboxView = () => {
                 }))
               }
             />
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-700">Gönderim Tarihi (en erken)</h3>
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Gönderim Tarihi (sonrası)
             <input
               type="date"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={filters.sentFrom ?? ""}
               onChange={(event) =>
                 setFilters((prev) => ({
@@ -664,85 +662,93 @@ const LabInboxView = () => {
                 }))
               }
             />
-          </section>
+          </label>
         </div>
       </Drawer>
 
-      <Modal
-        open={Boolean(selectedItem)}
-        onClose={() => setSelectedItem(null)}
-        title="Laboratuvar Formu"
-        description={
-          currentProduct
-            ? `${currentProduct.name} / ${currentProduct.standardNo ?? "Standart belirtilmedi"}`
-            : undefined
-        }
-        size="xl" className="max-h-[90vh]"
-        footer={modalFooter}
-      >
-        {selectedItem ? (
-          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1 text-sm text-slate-700">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-slate-500">Ürün Kodu</span>
-                <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                  {selectedItem.labEntryCode ?? "-"}
-                </span>
+      <Modal open={Boolean(selectedItem)} onClose={() => setSelectedItem(null)} title="Laboratuvar Formu" size="lg" footer={modalFooter}>
+        {!selectedItem ? null : (
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <h3 className="text-sm font-semibold text-slate-700">Firma / Ürün</h3>
+                <p className="mt-1 text-slate-900">
+                  {selectedItem.companyProductId} - {recordMap.get(selectedItem.companyProductId)?.companyName ?? "-"}
+                </p>
+                <p className="text-slate-600">{currentProduct?.name ?? "-"}</p>
+                <p className="text-slate-500">
+                  {currentProduct?.standardNo ?? "-"} · {currentProduct?.productType ?? "-"}
+                </p>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-slate-500">Laboratuvar</span>
-                <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                  {selectedItem.labAssignedLabId !== undefined
-                    ? labMap.get(selectedItem.labAssignedLabId) ?? "-"
-                    : "-"}
-                </span>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <h3 className="text-sm font-semibold text-slate-700">Gönderim Bilgileri</h3>
+                <p>
+                  <strong>Takip Kodu:</strong> {selectedItem.labEntryCode ?? "-"}
+                </p>
+                <p>
+                  <strong>Laboratuvar:</strong>{" "}
+                  {selectedItem.labAssignedLabId !== undefined ? labMap.get(selectedItem.labAssignedLabId) ?? "-" : "-"}
+                </p>
+                <p>
+                  <strong>Gönderim Tarihi:</strong> {selectedItem.labSentAt ? formatDate(selectedItem.labSentAt) : "-"}
+                </p>
+                <p>
+                  <strong>Durum:</strong>{" "}
+                  {labStatusLabels[selectedItem.labStatus ?? "PENDING"] ?? labStatusLabels.PENDING}
+                </p>
               </div>
             </div>
 
-            {showFormDetails ? (
-              selectedForm ? (
-                <LabFormDetails
-                  className="text-sm text-slate-700"
-                  fieldConfig={displayFields}
-                  fieldValues={fieldValues}
-                  documents={documents}
-                  documentActionsDisabled
-                  fieldsDisabled
-                  labNote={labNoteValue}
-                  labNoteDisabled
-                  labNotePlaceholder="-"
-                  cpcNote={isRevisionEditable ? revisionNote : cpcNoteValue}
-                  cpcNotePlaceholder="CPC notu bulunmuyor"
-                  cpcNoteDisabled={!isRevisionEditable}
-                  onCpcNoteChange={
-                    isRevisionEditable ? (value) => setRevisionNote(value) : undefined
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-slate-700">Laboratuvar Formu</h3>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                {displayFields.map((field) => {
+                  const renderShipment = field.key === "shipment" && selectedItem.labShipmentDetails;
+                  if (renderShipment) {
+                    return (
+                      <div key={field.key} className="grid gap-2 md:grid-cols-2">
+                        {SHIPMENT_FIELDS.map((shipField) => (
+                          <div key={shipField.key} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-xs text-slate-500">{shipField.label}</p>
+                            <p className="font-medium text-slate-800">
+                              {renderValue(
+                                selectedItem.labShipmentDetails
+                                  ? (selectedItem.labShipmentDetails as any)[shipField.key]
+                                  : undefined
+                              )}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    );
                   }
-                />
-              ) : (
-                <p className="text-sm text-slate-500">Form verisi bulunamadı.</p>
-              )
-            ) : shipmentDetails ? (
-              <div className="space-y-4 text-sm text-slate-700">
-                {SHIPMENT_FIELDS.map((field) => {
-                  const rawValue = shipmentDetails[field.key];
-                  const value =
-                    field.isDate && typeof rawValue === "string" && rawValue
-                      ? formatDate(rawValue)
-                      : renderValue(rawValue);
+
                   return (
-                    <div key={field.key} className="flex flex-col gap-1">
-                      <span className="text-xs font-semibold text-slate-500">{field.label}</span>
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">{value}</span>
+                    <div key={field.key} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs text-slate-500">{field.label}</p>
+                      <p className="font-medium text-slate-800">{renderValue(fieldValues[field.key])}</p>
                     </div>
                   );
                 })}
               </div>
-            ) : (
-              <p className="text-sm text-slate-500">Gönderim bilgisi bulunamadı.</p>
-            )}
+            </div>
+
+            {showFormDetails ? (
+              <LabFormDetails
+                fieldConfig={displayFields}
+                fieldValues={fieldValues}
+                fieldsDisabled
+                documents={documents}
+                documentActionsDisabled
+                labNote={labNoteValue}
+                labNoteDisabled
+                cpcNote={isRevisionEditable ? revisionNote : cpcNoteValue}
+                onCpcNoteChange={isRevisionEditable ? setRevisionNote : undefined}
+                cpcNoteDisabled={!isRevisionEditable}
+                cpcNotePlaceholder="Revize notu girin"
+              />
+            ) : null}
           </div>
-        ) : (
-          <p className="text-sm text-slate-500">Form verisi bulunamadı.</p>
         )}
       </Modal>
     </div>

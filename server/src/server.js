@@ -12,6 +12,7 @@ const labShipmentsRoute = require("./routes/labShipments");
 const labFormsRoute = require("./routes/labForms");
 const labItemsRoute = require("./routes/labItems");
 const labsRoute = require("./routes/labs");
+const companyProductsImportRoute = require("./routes/companyProductsImport");
 const authRoute = require("./routes/auth");
 const { authenticateJWT, requireRole } = require("./middleware/auth");
 
@@ -34,7 +35,15 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/auth", authRoute);
-app.use("/products", authenticateJWT, requireRole(["admin"]), productsRoute);
+app.use(
+  "/products",
+  authenticateJWT,
+  (req, res, next) => {
+    if (req.method === "GET") return next();
+    return requireRole(["admin"])(req, res, next);
+  },
+  productsRoute
+);
 app.use(
   "/company-products",
   authenticateJWT,
@@ -44,8 +53,25 @@ app.use(
   },
   companyProductsRoute
 );
-app.use("/employees", authenticateJWT, requireRole(["admin"]), employeesRoute);
-app.use("/trips", authenticateJWT, requireRole(["admin"]), tripsRoute);
+app.use("/company-products-import", authenticateJWT, requireRole(["admin"]), companyProductsImportRoute);
+app.use(
+  "/employees",
+  authenticateJWT,
+  (req, res, next) => {
+    if (req.method === "GET") return next();
+    return requireRole(["admin"])(req, res, next);
+  },
+  employeesRoute
+);
+app.use(
+  "/trips",
+  authenticateJWT,
+  (req, res, next) => {
+    if (req.method === "GET") return next();
+    return requireRole(["admin"])(req, res, next);
+  },
+  tripsRoute
+);
 app.use("/lab-shipments", authenticateJWT, requireRole(["admin", "lab"]), labShipmentsRoute);
 app.use("/lab-forms", authenticateJWT, requireRole(["admin", "lab"]), labFormsRoute);
 app.use("/lab-items", authenticateJWT, requireRole(["admin", "lab"]), labItemsRoute);
